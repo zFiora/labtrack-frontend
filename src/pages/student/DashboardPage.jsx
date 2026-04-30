@@ -2,43 +2,9 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import { getCurrentUser } from "../../utils/authStorage.js";
+import { api } from "../../utils/api.js";
 
-const LABS_KEY     = "labtrack_instructor_labs";
-const COURSES_KEY  = "labtrack_courses";
-const PROGRESS_KEY = "labtrack_student_progress";
-
-// ─── Storage helpers ──────────────────────────────────────────────────────────
-function readJson(key, fallback) {
-  try {
-    const raw = localStorage.getItem(key);
-    return raw ? JSON.parse(raw) : fallback;
-  } catch (e) {
-    console.warn(`Failed to read ${key}`, e);
-    return fallback;
-  }
-}
-
-// ─── Data helpers ─────────────────────────────────────────────────────────────
-function getEnrolledCourses(user) {
-  const courses = readJson(COURSES_KEY, []);
-  const uid = user.id || user.email;
-  return courses.filter((c) =>
-    c.sections?.some((s) => s.enrolledStudentIds?.includes(uid))
-  );
-}
-
-function getActiveLabs() {
-  return readJson(LABS_KEY, []).filter((l) => l.status === "active");
-}
-
-function getProgress(uid) {
-  return readJson(PROGRESS_KEY, {})[uid] || {};
-}
-
-function resolveStatus(labId, progress) {
-  return progress[labId]?.status ?? "not_started";
-}
-
+// ─── Pure helpers (no storage) ────────────────────────────────────────────────
 function parseDeadline(iso) {
   if (!iso) return null;
   const d = new Date(iso);
@@ -56,10 +22,10 @@ function fmtDeadline(deadline) {
 function relativeTime(iso) {
   if (!iso) return "—";
   const m = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
-  if (m < 1)   return "Just now";
-  if (m < 60)  return `${m}m ago`;
+  if (m < 1)  return "Just now";
+  if (m < 60) return `${m}m ago`;
   const h = Math.floor(m / 60);
-  if (h < 24)  return `${h}h ago`;
+  if (h < 24) return `${h}h ago`;
   return `${Math.floor(h / 24)}d ago`;
 }
 
@@ -98,61 +64,86 @@ function deadlineIcon(hrs) {
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function DashboardPage() {
   const navigate = useNavigate();
-  const [data, setData] = useState(null);
+  const [data, setData]       = useState(null);
+  const [error, setError]     = useState(null);
 
   useEffect(() => {
-    const user     = getCurrentUser() || {};
-    const uid      = user.id || user.email || "guest";
-    const progress = getProgress(uid);
-    const labs     = getActiveLabs();
-    const courses  = getEnrolledCourses(user);
+    const user = getCurrentUser();
+    if (!user) { navigate("/"); return; }
 
-    // Sort labs by due date
-    const sortedLabs = [...labs].sort((a, b) => {
-      const da = a.dueDate ? new Date(a.dueDate).getTime() : Infinity;
-      const db = b.dueDate ? new Date(b.dueDate).getTime() : Infinity;
-      return da - db;
-    });
+    Promise.all([
+      api.get("/student/labs?status=active"),
+      api.get("/progress"),
+      api.get("/student/courses?enrolled=true"),
+    ])
+      .then(([labs, progress, courses]) => {
+        const sortedLabs = [...labs].sort((a, b) => {
+          const da = a.dueDate ? new Date(a.dueDate).getTime() : Infinity;
+          const db = b.dueDate ? new Date(b.dueDate).getTime() : Infinity;
+          return da - db;
+        });
 
-    // Upcoming: not submitted, due within 72 h or overdue, at most 3
-    const upcoming = sortedLabs
-      .filter((l) => {
-        const s = resolveStatus(l.id, progress);
-        if (s === "submitted" || s === "graded") return false;
-        const d = parseDeadline(l.dueDate);
-        return d ? hoursUntil(d) < 72 : false;
+        // progress shape: { [labId]: { status, submittedAt, score } }
+        const labStatus = (labId) => progress[labId]?.status ?? "not_started";
+
+        // Upcoming: not submitted/graded, due within 72 h, max 3
+        const upcoming = sortedLabs
+          .filter((l) => {
+            const s = labStatus(l.id);
+            if (s === "submitted" || s === "graded") return false;
+            const d = parseDeadline(l.dueDate);
+            return d ? hoursUntil(d) < 72 : false;
+          })
+          .slice(0, 3);
+
+        // Per-course completion (labs linked by courseCode when available)
+        const courseStats = courses.map((c) => {
+          const courseLabs = c.courseCode
+            ? sortedLabs.filter((l) => l.courseCode === c.courseCode)
+            : sortedLabs;
+          const done = courseLabs.filter((l) => {
+            const s = labStatus(l.id);
+            return s === "submitted" || s === "graded";
+          }).length;
+          return { ...c, total: courseLabs.length, done };
+        });
+
+        // Summary stats
+        const completed  = labs.filter((l) => { const s = labStatus(l.id); return s === "submitted" || s === "graded"; }).length;
+        const inProgress = labs.filter((l) => labStatus(l.id) === "in_progress").length;
+
+        const scores = Object.values(progress)
+          .map((p) => p.score)
+          .filter((s) => s !== null && s !== undefined);
+        const avgScore = scores.length > 0
+          ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)
+          : null;
+
+        // Recent activity feed
+        const recent = Object.entries(progress)
+          .filter(([, v]) => v.submittedAt)
+          .map(([labId, v]) => {
+            const lab = labs.find((l) => String(l.id) === String(labId));
+            return { labId, title: lab?.title ?? `Lab ${labId}`, submittedAt: v.submittedAt, status: v.status };
+          })
+          .sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt))
+          .slice(0, 4);
+
+        setData({ user, labs: sortedLabs, upcoming, courseStats, completed, inProgress, avgScore, recent, progress });
       })
-      .slice(0, 3);
+      .catch((err) => {
+        if (err.status === 401) { navigate("/"); return; }
+        setError("Failed to load dashboard. Please refresh.");
+      });
+  }, [navigate]);
 
-    // Per-course completion
-    const courseStats = courses.map((c) => {
-      const courseLabs = sortedLabs; // no courseId on labs; show global stats per course card
-      const done  = courseLabs.filter((l) => {
-        const s = resolveStatus(l.id, progress);
-        return s === "submitted" || s === "graded";
-      }).length;
-      return { ...c, total: courseLabs.length, done };
-    });
-
-    // Stats
-    const completed  = labs.filter((l) => { const s = resolveStatus(l.id, progress); return s === "submitted" || s === "graded"; }).length;
-    const inProgress = labs.filter((l) => resolveStatus(l.id, progress) === "in_progress").length;
-    const graded     = labs.filter((l) => resolveStatus(l.id, progress) === "graded");
-    const scores     = graded.map((l) => progress[l.id]?.score).filter((s) => s !== null && s !== undefined);
-    const avgScore   = scores.length > 0 ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null;
-
-    // Recent activity from progress entries
-    const recent = Object.entries(progress)
-      .filter(([, v]) => v.submittedAt)
-      .map(([labId, v]) => {
-        const lab = labs.find((l) => String(l.id) === String(labId));
-        return { labId, title: lab?.title ?? `Lab ${labId}`, submittedAt: v.submittedAt, status: v.status };
-      })
-      .sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt))
-      .slice(0, 4);
-
-    setData({ user, labs: sortedLabs, upcoming, courseStats, completed, inProgress, avgScore, recent, progress, courses });
-  }, []);
+  if (error) {
+    return (
+      <DashboardLayout>
+        <div className="flex items-center justify-center h-64 text-red-400">{error}</div>
+      </DashboardLayout>
+    );
+  }
 
   if (!data) {
     return (
@@ -164,12 +155,13 @@ export default function DashboardPage() {
 
   const { user, labs, upcoming, courseStats, completed, inProgress, avgScore, recent, progress } = data;
   const today = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+  const labStatus = (labId) => progress[labId]?.status ?? "not_started";
 
   const stats = [
-    { value: labs.length,                  label: "Active Labs",   color: "text-cyan-400"   },
-    { value: completed,                    label: "Completed",     color: "text-green-400"  },
-    { value: inProgress,                   label: "In Progress",   color: "text-yellow-400" },
-    { value: avgScore === null ? "—" : `${avgScore}%`, label: "Avg Score", color: "text-green-400" },
+    { value: labs.length,                             label: "Active Labs",   color: "text-cyan-400"   },
+    { value: completed,                               label: "Completed",     color: "text-green-400"  },
+    { value: inProgress,                              label: "In Progress",   color: "text-yellow-400" },
+    { value: avgScore === null ? "—" : `${avgScore}%`, label: "Avg Score",   color: "text-green-400"  },
   ];
 
   return (
@@ -211,8 +203,8 @@ export default function DashboardPage() {
               upcoming.map((lab) => {
                 const deadline = parseDeadline(lab.dueDate);
                 const hrs      = deadline ? hoursUntil(deadline) : null;
-                const labStatus= resolveStatus(lab.id, progress);
-                const pct      = labStatus === "in_progress" ? 40 : 0;
+                const status   = labStatus(lab.id);
+                const pct      = status === "in_progress" ? 40 : 0;
 
                 return (
                   <div key={lab.id} className="rounded-3xl bg-[#1a2238] p-6 shadow-sm">
@@ -227,7 +219,7 @@ export default function DashboardPage() {
                         )}
                       </div>
                       <span className="rounded-full bg-cyan-500/10 px-3 py-1 text-xs font-medium text-cyan-400 capitalize">
-                        {labStatus.replace("_", " ")}
+                        {status.replace("_", " ")}
                       </span>
                     </div>
                     {pct > 0 && (
@@ -246,7 +238,7 @@ export default function DashboardPage() {
                         onClick={() => navigate(`/labs/${lab.id}`)}
                         className="rounded-full bg-cyan-400 px-5 py-2 text-sm font-semibold text-[#0b1220] hover:bg-cyan-300"
                       >
-                        {labStatus === "in_progress" ? "Continue Lab" : "Start Lab"}
+                        {status === "in_progress" ? "Continue Lab" : "Start Lab"}
                       </button>
                     </div>
                   </div>

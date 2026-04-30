@@ -125,21 +125,21 @@ uses it. This prevents 37 pages from each doing it manually.
 
 ### File: `src/pages/student/DashboardPage.jsx`
 
-- [ ] **3.1 — Replace localStorage lab data**
+- [x] **3.1 — Replace localStorage lab data**
   - Remove all `localStorage.getItem("labtrack_instructor_labs")` calls
   - Call `api.get("/student/labs?status=active")` to get labs
   - Upcoming labs = labs where `dueDate` is within 72 hours and status is active (same filter logic)
 
-- [ ] **3.2 — Replace localStorage progress data**
+- [x] **3.2 — Replace localStorage progress data**
   - Remove all `localStorage.getItem("labtrack_student_progress")` calls
   - Call `api.get("/progress")` to get `{ [labId]: { status, submittedAt, score } }`
   - Use this to compute per-lab status and overall completion
 
-- [ ] **3.3 — Replace localStorage grades data**
+- [x] **3.3 — Replace localStorage grades data**
   - Call `api.get("/student/grades")` for average score and graded lab count
   - Note: `submissionStatus` and `score` are now on each lab item from `/student/labs`
 
-- [ ] **3.4 — Replace localStorage courses data**
+- [x] **3.4 — Replace localStorage courses data**
   - Call `api.get("/student/courses?enrolled=true")` for enrolled courses
   - Use to build the course completion summary
 
@@ -147,7 +147,7 @@ uses it. This prevents 37 pages from each doing it manually.
 
 ### File: `src/pages/student/LabsPage.jsx`
 
-- [ ] **3.5 — Replace localStorage with API**
+- [x] **3.5 — Replace localStorage with API**
   - Remove all `localStorage.getItem("labtrack_instructor_labs")` calls
   - Call `api.get("/student/labs?status=active")`
   - The response already includes `submissionStatus` and `submittedAt` per student
@@ -196,7 +196,7 @@ uses it. This prevents 37 pages from each doing it manually.
 
 ### File: `src/pages/student/HistoryPage.jsx`
 
-- [ ] **3.13 — Replace localStorage with API**
+- [x] **3.13 — Replace localStorage with API**
   - Call `api.get("/student/labs")` to get all labs
   - Call `api.get("/progress")` to know which ones have been submitted
   - Filter to show labs with `status !== "not_started"`
@@ -214,7 +214,7 @@ uses it. This prevents 37 pages from each doing it manually.
 
 ### File: `src/pages/student/GradesPage.jsx`
 
-- [ ] **3.15 — Replace localStorage with API**
+- [x] **3.15 — Replace localStorage with API**
   - Call `api.get("/student/grades")`
   - Returns: `[ { id, lab, score, testsPassed, testsTotal, grade, feedback, status, submittedAt } ]`
   - `lab` is a nested object with lab details — read `lab.title`, `lab.courseCode`, etc.

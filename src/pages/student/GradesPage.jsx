@@ -1,21 +1,8 @@
 import { useState, useEffect, useMemo } from "react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import { getCurrentUser } from "../../utils/authStorage.js";
-
-const LABS_KEY     = "labtrack_instructor_labs";
-const COURSES_KEY  = "labtrack_courses";
-const PROGRESS_KEY = "labtrack_student_progress";
-const SUBS_KEY     = "labtrack_submissions";
-
-function readJson(key, fallback) {
-  try {
-    const raw = localStorage.getItem(key);
-    return raw ? JSON.parse(raw) : fallback;
-  } catch (e) {
-    console.warn(`Failed to read ${key}`, e);
-    return fallback;
-  }
-}
+import { api } from "../../utils/api.js";
+import { useNavigate } from "react-router-dom";
 
 function scoreToGrade(score) {
   if (score === null || score === undefined) return "—";
@@ -33,88 +20,68 @@ function fmtDate(iso) {
   if (!iso) return "—";
   try {
     return new Date(iso).toLocaleDateString("en-US", {
-      month: "short",
-      day:   "numeric",
-      year:  "numeric",
+      month: "short", day: "numeric", year: "numeric",
     });
-  } catch (e) {
-    console.warn("Invalid date value", e);
+  } catch {
     return "—";
   }
 }
 
-const SEED_ROWS = [
-  { id: 8, lab: "LinkedList",      score: 94,   testsPassed: 5, testsTotal: 5, grade: "A",  feedback: "Excellent O(1) insert. Watch edge cases.",     status: "Graded",      submittedAt: "Apr 21, 2025" },
-  { id: 7, lab: "Recursion",       score: 78,   testsPassed: 4, testsTotal: 5, grade: "B+", feedback: "Good base case. Improve memoization.",          status: "Graded",      submittedAt: "Apr 17, 2025" },
-  { id: 9, lab: "Stacks & Queues", score: 90,   testsPassed: 5, testsTotal: 5, grade: "A",  feedback: "Clean implementation. Add type hints.",         status: "Graded",      submittedAt: "Apr 25, 2025" },
-  { id: 6, lab: "Binary Trees",    score: null, testsPassed: 3, testsTotal: 5, grade: "—",  feedback: "—",                                             status: "In Progress", submittedAt: "—"            },
-];
-
-const SEED_COURSES = ["ICS 202 - SEC 03", "COE 301 - SEC 02"];
-
 export default function GradesPage() {
-  const [courses, setCourses]           = useState(SEED_COURSES);
-  const [selectedCourse, setSelectedCourse] = useState(SEED_COURSES[0]);
-  const [rows, setRows]                 = useState(SEED_ROWS);
-  const [detailItem, setDetailItem]     = useState(null);
+  const navigate = useNavigate();
+  const [rows, setRows]                     = useState([]);
+  const [courses, setCourses]               = useState([]);
+  const [selectedCourse, setSelectedCourse] = useState("all");
+  const [detailItem, setDetailItem]         = useState(null);
+  const [loading, setLoading]               = useState(true);
+  const [error, setError]                   = useState(null);
 
   useEffect(() => {
-    const user = getCurrentUser() || {};
-    const uid  = user.id || user.email || "guest";
+    const user = getCurrentUser();
+    if (!user) { navigate("/"); return; }
 
-    // Enrolled courses for dropdown
-    const allCourses = readJson(COURSES_KEY, []);
-    const enrolled   = allCourses.filter((c) =>
-      c.sections?.some((s) => s.enrolledStudentIds?.includes(uid))
-    );
-    const courseNames = enrolled.length > 0
-      ? enrolled.map((c) => `${c.courseCode} — ${c.name}`)
-      : SEED_COURSES;
-    setCourses(courseNames);
-    setSelectedCourse(courseNames[0]);
+    Promise.all([
+      api.get("/student/grades"),
+      api.get("/student/courses?enrolled=true"),
+    ])
+      .then(([grades, enrolledCourses]) => {
+        // grades: [{ id, lab: { title, courseCode, points, ... }, score, testsPassed,
+        //            testsTotal, grade, feedback, status, submittedAt }]
+        const built = grades.map((g) => ({
+          id:          g.id,
+          lab:         g.lab?.title ?? "—",
+          courseCode:  g.lab?.courseCode ?? null,
+          score:       g.score ?? null,
+          maxScore:    g.lab?.points ?? 100,
+          testsPassed: g.testsPassed ?? "—",
+          testsTotal:  g.testsTotal  ?? "—",
+          grade:       g.grade ?? scoreToGrade(g.score),
+          feedback:    g.feedback ?? g.overallFeedback ?? "—",
+          status:      capitalize(g.status ?? "not_started"),
+          submittedAt: fmtDate(g.submittedAt),
+        }));
+        setRows(built);
+        setCourses(enrolledCourses);
+      })
+      .catch((err) => {
+        if (err.status === 401) { navigate("/"); return; }
+        setError("Failed to load grades. Please refresh.");
+      })
+      .finally(() => setLoading(false));
+  }, [navigate]);
 
-    // Grades data
-    const labs     = readJson(LABS_KEY, []).filter((l) => l.status === "active");
-    const progress = readJson(PROGRESS_KEY, {})[uid] || {};
-    const subs     = readJson(SUBS_KEY, {});
+  function capitalize(s) {
+    return s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  }
 
-    if (labs.length === 0) {
-      setRows(SEED_ROWS);
-      return;
-    }
+  const filteredRows = useMemo(() => {
+    if (selectedCourse === "all") return rows;
+    const course = courses.find((c) => c.id === selectedCourse);
+    if (!course) return rows;
+    return rows.filter((r) => r.courseCode === course.courseCode);
+  }, [rows, selectedCourse, courses]);
 
-    const built = labs.map((lab) => {
-      const labKey = String(lab.id);
-      const prog   = progress[labKey] || progress[lab.id] || {};
-      const sub    = subs[labKey]?.[uid] || subs[lab.id]?.[uid] || {};
-      const score  = sub.score ?? prog.score ?? null;
-      let status = "Not Started";
-      if (sub.status === "graded") {
-        status = "Graded";
-      } else if (prog.status === "submitted") {
-        status = "Pending";
-      } else if (prog.status === "in_progress") {
-        status = "In Progress";
-      }
-
-      return {
-        id: lab.id,
-        lab: lab.title,
-        score,
-        testsPassed: "—",
-        testsTotal:  "—",
-        grade:       scoreToGrade(score),
-        feedback:    sub.overallFeedback || "—",
-        status,
-        submittedAt: fmtDate(prog.submittedAt || sub.gradedAt || null),
-      };
-    });
-
-    const hasActivity = built.some((r) => r.status !== "Not Started");
-    setRows(hasActivity ? built : SEED_ROWS);
-  }, []);
-
-  const gradedLabs = useMemo(() => rows.filter((r) => r.score != null), [rows]);
+  const gradedLabs = useMemo(() => filteredRows.filter((r) => r.score != null), [filteredRows]);
 
   const avgScore = useMemo(() => {
     if (gradedLabs.length === 0) return "0";
@@ -127,38 +94,50 @@ export default function GradesPage() {
   }, [gradedLabs]);
 
   const overallGrade = useMemo(() => scoreToGrade(Number(avgScore)), [avgScore]);
-
   const trendHeights = gradedLabs.map((r) => `${Math.max(r.score, 20)}%`);
 
-  const getGradeColor = (grade) => {
+  function getGradeColor(grade) {
     if (grade === "A" || grade === "A+") return "text-green-400";
     if (grade === "B+" || grade === "B") return "text-cyan-400";
     if (grade === "C+" || grade === "C") return "text-yellow-400";
     if (grade === "D" || grade === "F")  return "text-red-400";
     return "text-gray-400";
-  };
+  }
 
-  const getStatusClass = (status) => {
-    if (status === "Graded")      return "text-green-400";
-    if (status === "Pending")     return "text-cyan-400";
-    if (status === "In Progress") return "text-yellow-400";
+  function getStatusClass(status) {
+    const s = status?.toLowerCase();
+    if (s === "graded")      return "text-green-400";
+    if (s === "submitted")   return "text-cyan-400";
+    if (s === "in progress") return "text-yellow-400";
     return "text-gray-400";
-  };
+  }
 
-  const getScoreDisplay = (score) => {
+  function getScoreDisplay(score, max) {
     if (score == null) return "—";
-    return `${score}/100`;
-  };
+    return `${score}/${max ?? 100}`;
+  }
 
-  const getScoreClass = (score) => {
+  function getScoreClass(score) {
     if (score == null) return "text-gray-300";
     if (score < 60) return "text-red-400 font-semibold";
     return "text-gray-300";
-  };
+  }
 
-  const handleExportPDF = () => {
-    alert("Export PDF is not implemented in this prototype yet.");
-  };
+  if (loading) {
+    return (
+      <DashboardLayout>
+        <div className="flex items-center justify-center h-64 text-gray-400">Loading grades…</div>
+      </DashboardLayout>
+    );
+  }
+
+  if (error) {
+    return (
+      <DashboardLayout>
+        <div className="flex items-center justify-center h-64 text-red-400">{error}</div>
+      </DashboardLayout>
+    );
+  }
 
   return (
     <DashboardLayout>
@@ -178,21 +157,15 @@ export default function GradesPage() {
                   onChange={(e) => setSelectedCourse(e.target.value)}
                   className="rounded-md bg-[#0f1b33] px-4 py-3 text-sm text-white outline-none focus:ring-2 focus:ring-cyan-500"
                 >
+                  <option value="all">All Courses</option>
                   {courses.map((c) => (
-                    <option key={c} value={c}>{c}</option>
+                    <option key={c.id} value={c.id}>{c.courseCode} — {c.name}</option>
                   ))}
                 </select>
-                <button
-                  type="button"
-                  onClick={handleExportPDF}
-                  className="rounded-md bg-cyan-500 px-4 py-3 text-sm font-semibold hover:bg-cyan-600"
-                >
-                  Export PDF
-                </button>
               </div>
             </div>
             <div className="px-6 py-4">
-              <h2 className="text-center text-2xl font-bold text-white">Grades & Feedback</h2>
+              <h2 className="text-center text-2xl font-bold text-white">Grades &amp; Feedback</h2>
             </div>
           </div>
 
@@ -211,7 +184,7 @@ export default function GradesPage() {
               <p className="mt-1 text-sm text-gray-400">Avg Score</p>
             </div>
             <div className="rounded-xl bg-[#0b1424] p-6 shadow-lg">
-              <h3 className="text-4xl font-bold text-cyan-400">{gradedLabs.length}/{rows.length}</h3>
+              <h3 className="text-4xl font-bold text-cyan-400">{gradedLabs.length}/{filteredRows.length}</h3>
               <p className="mt-1 text-sm text-gray-400">Labs Done</p>
             </div>
             <div className="rounded-xl bg-[#0b1424] p-6 shadow-lg">
@@ -256,12 +229,12 @@ export default function GradesPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((item) => (
+                  {filteredRows.map((item, idx) => (
                     <tr key={item.id} className="border-t border-[#162238] hover:bg-[#0f1b33]/60">
-                      <td className="px-4 py-4 text-sm font-semibold text-gray-400">{item.id}</td>
+                      <td className="px-4 py-4 text-sm font-semibold text-gray-400">{idx + 1}</td>
                       <td className="px-4 py-4 text-sm font-semibold text-white">{item.lab}</td>
                       <td className={`px-4 py-4 text-sm ${getScoreClass(item.score)}`}>
-                        {getScoreDisplay(item.score)}
+                        {getScoreDisplay(item.score, item.maxScore)}
                       </td>
                       <td className="px-4 py-4 text-sm text-gray-300">
                         {item.testsPassed}/{item.testsTotal}
@@ -270,7 +243,7 @@ export default function GradesPage() {
                       <td className={`px-4 py-4 text-sm font-semibold ${getStatusClass(item.status)}`}>{item.status}</td>
                       <td className="px-4 py-4 text-sm text-gray-300">{item.submittedAt}</td>
                       <td className="px-4 py-4 text-sm text-gray-400">
-                        {item.status === "Graded" ? (
+                        {item.status?.toLowerCase() === "graded" ? (
                           <button
                             type="button"
                             onClick={() => setDetailItem(item)}
@@ -284,6 +257,13 @@ export default function GradesPage() {
                       </td>
                     </tr>
                   ))}
+                  {filteredRows.length === 0 && (
+                    <tr>
+                      <td colSpan={8} className="px-4 py-8 text-center text-sm text-gray-500">
+                        No grades found for this course.
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
@@ -301,11 +281,7 @@ export default function GradesPage() {
           <div className="bg-[#0b1424] border border-cyan-500/30 rounded-2xl p-8 max-w-lg w-full mx-4 shadow-2xl">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-xl font-bold text-white">{detailItem.lab} — Instructor Feedback</h2>
-              <button
-                type="button"
-                onClick={() => setDetailItem(null)}
-                className="text-slate-400 hover:text-white text-xl font-bold"
-              >
+              <button type="button" onClick={() => setDetailItem(null)} className="text-slate-400 hover:text-white text-xl font-bold">
                 ✕
               </button>
             </div>
@@ -314,7 +290,7 @@ export default function GradesPage() {
                 <div className="bg-[#0f172a] rounded-xl p-4">
                   <p className="text-slate-500 mb-1">Score</p>
                   <p className={`text-2xl font-bold ${getScoreClass(detailItem.score)}`}>
-                    {getScoreDisplay(detailItem.score)}
+                    {getScoreDisplay(detailItem.score, detailItem.maxScore)}
                   </p>
                 </div>
                 <div className="bg-[#0f172a] rounded-xl p-4">

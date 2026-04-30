@@ -1,56 +1,8 @@
 import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import DashboardLayout from "../../components/layout/DashboardLayout";
-
-const LABS_KEY     = "labtrack_instructor_labs";
-const COURSES_KEY  = "labtrack_courses";
-const PROGRESS_KEY = "labtrack_student_progress";
-
-// ─── Storage helpers ──────────────────────────────────────────────────────────
-function readJson(key, fallback) {
-  try {
-    const raw = localStorage.getItem(key);
-    return raw ? JSON.parse(raw) : fallback;
-  } catch (e) {
-    console.warn(`Failed to read ${key} from localStorage`, e);
-    return fallback;
-  }
-}
-
-function writeJson(key, value) {
-  try {
-    localStorage.setItem(key, JSON.stringify(value));
-  } catch (e) {
-    console.warn(`Failed to write ${key} to localStorage`, e);
-  }
-}
-
-// ─── Seed demo progress so the page is not empty on first load ────────────────
-function seedProgress(uid) {
-  const all = readJson(PROGRESS_KEY, {});
-  if (all[uid]) return;
-  all[uid] = {
-    9:  { status: "submitted",  submittedAt: "2026-04-01T22:14:00Z", score: 60 },
-    10: { status: "in_progress", submittedAt: null, score: null },
-  };
-  writeJson(PROGRESS_KEY, all);
-}
-
-function getProgress(uid) {
-  return readJson(PROGRESS_KEY, {})[uid] || {};
-}
-
-function getStoredLabs() {
-  return readJson(LABS_KEY, []).filter((l) => l.status === "active");
-}
-
-function getEnrolledCourses(user) {
-  const courses = readJson(COURSES_KEY, []);
-  const uid = user.id || user.email;
-  return courses.filter((c) =>
-    c.sections?.some((s) => s.enrolledStudentIds?.includes(uid))
-  );
-}
+import { getCurrentUser } from "../../utils/authStorage.js";
+import { api } from "../../utils/api.js";
 
 // ─── Deadline helpers ─────────────────────────────────────────────────────────
 function parseDeadline(iso) {
@@ -65,17 +17,12 @@ function deadlineLabel(deadline) {
   });
 }
 
-// "overdue" | "soon" (< 48 h) | "ok"
 function deadlineStatus(deadline) {
   if (!deadline) return "ok";
   const ms = deadline.getTime() - Date.now();
   if (ms < 0)             return "overdue";
   if (ms < 48 * 3600000) return "soon";
   return "ok";
-}
-
-function resolveLabStatus(labId, progress) {
-  return progress[labId]?.status ?? "not_started";
 }
 
 // ─── Lookup tables ────────────────────────────────────────────────────────────
@@ -104,7 +51,6 @@ const dimmed = "#4a5568";
 const danger = "#f87171";
 const warn   = "#fbbf24";
 
-// ─── Derived card-border colour ───────────────────────────────────────────────
 function cardBorderColor(ds) {
   if (ds === "overdue") return "#f87171";
   if (ds === "soon")    return "#fbbf24";
@@ -153,7 +99,6 @@ function LabCard({ lab, statusEntry, deadline, onOpen }) {
       flexDirection: "column",
       gap: 12,
     }}>
-      {/* Top row */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
         <div style={{ minWidth: 0 }}>
           {lab.labNumber && (
@@ -163,7 +108,7 @@ function LabCard({ lab, statusEntry, deadline, onOpen }) {
           )}
           <div style={{ fontSize: 15, fontWeight: 700, color: "#e2e8f0", marginBottom: 3 }}>{lab.title}</div>
           <div style={{ fontSize: 12, color: muted }}>
-            {lab.languages?.join(", ") || "Python"} · {lab.points ?? "—"} pts
+            {lab.languages?.join(", ") || lab.language || "Python"} · {lab.points ?? "—"} pts
           </div>
         </div>
         <span style={{
@@ -175,7 +120,6 @@ function LabCard({ lab, statusEntry, deadline, onOpen }) {
         </span>
       </div>
 
-      {/* Due date row */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div style={{ fontSize: 12 }}>
           {deadline ? (
@@ -188,12 +132,11 @@ function LabCard({ lab, statusEntry, deadline, onOpen }) {
         </div>
         {isGraded && score !== null && (
           <span style={{ fontSize: 13, fontWeight: 700, color: scoreColor(score) }}>
-            {score}/100
+            {score}/{lab.points ?? 100}
           </span>
         )}
       </div>
 
-      {/* Open button */}
       <button type="button" onClick={onOpen} style={{
         background: isGraded ? "transparent" : accent,
         border: isGraded ? `1px solid ${border}` : "none",
@@ -211,43 +154,61 @@ function LabCard({ lab, statusEntry, deadline, onOpen }) {
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function LabsPage() {
   const navigate = useNavigate();
-  const [labs, setLabs]               = useState([]);
-  const [progress, setProgress]       = useState({});
-  const [courses, setCourses]         = useState([]);
-  const [filter, setFilter]           = useState("all");
+  const [labs, setLabs]                 = useState([]);
+  const [progress, setProgress]         = useState({});
+  const [courses, setCourses]           = useState([]);
+  const [filter, setFilter]             = useState("all");
   const [courseFilter, setCourseFilter] = useState("all");
-  const [loading, setLoading]         = useState(true);
+  const [loading, setLoading]           = useState(true);
+  const [error, setError]               = useState(null);
 
   useEffect(() => {
-    const user = readJson("currentUser", {});
-    const uid  = user.id || user.email || "guest";
+    const user = getCurrentUser();
+    if (!user) { navigate("/"); return; }
 
-    seedProgress(uid);
+    Promise.all([
+      api.get("/student/labs?status=active"),
+      api.get("/progress"),
+      api.get("/student/courses?enrolled=true"),
+    ])
+      .then(([fetchedLabs, fetchedProgress, fetchedCourses]) => {
+        const sorted = [...fetchedLabs].sort((a, b) => {
+          const da = a.dueDate ? new Date(a.dueDate).getTime() : Infinity;
+          const db = b.dueDate ? new Date(b.dueDate).getTime() : Infinity;
+          return da - db;
+        });
+        setLabs(sorted);
+        setProgress(fetchedProgress);
+        setCourses(fetchedCourses);
+      })
+      .catch((err) => {
+        if (err.status === 401) { navigate("/"); return; }
+        setError("Failed to load labs. Please refresh.");
+      })
+      .finally(() => setLoading(false));
+  }, [navigate]);
 
-    const storedLabs = getStoredLabs();
-    storedLabs.sort((a, b) => {
-      const da = a.dueDate ? new Date(a.dueDate).getTime() : Infinity;
-      const db = b.dueDate ? new Date(b.dueDate).getTime() : Infinity;
-      return da - db;
-    });
+  // progress shape: { [labId]: { status, submittedAt, score } }
+  const labStatus = (labId) => progress[labId]?.status ?? "not_started";
 
-    setLabs(storedLabs);
-    setProgress(getProgress(uid));
-    setCourses(getEnrolledCourses(user));
-    setLoading(false);
-  }, []);
-
-  const filtered = useMemo(() =>
-    labs.filter((lab) => {
-      if (filter === "all") return true;
-      return resolveLabStatus(lab.id, progress) === filter;
-    }),
-  [labs, filter, progress]);
+  const filtered = useMemo(() => {
+    let list = labs;
+    if (courseFilter !== "all") {
+      const course = courses.find((c) => c.id === courseFilter);
+      if (course?.courseCode) {
+        list = list.filter((l) => l.courseCode === course.courseCode);
+      }
+    }
+    if (filter !== "all") {
+      list = list.filter((l) => labStatus(l.id) === filter);
+    }
+    return list;
+  }, [labs, filter, courseFilter, courses, progress]);
 
   const counts = useMemo(() => {
     const c = { all: labs.length };
     FILTERS.slice(1).forEach((f) => {
-      c[f] = labs.filter((l) => resolveLabStatus(l.id, progress) === f).length;
+      c[f] = labs.filter((l) => labStatus(l.id) === f).length;
     });
     return c;
   }, [labs, progress]);
@@ -257,8 +218,16 @@ export default function LabsPage() {
 
   const overdueCount = labs.filter((l) => {
     const d = parseDeadline(l.dueDate);
-    return d && d < new Date() && resolveLabStatus(l.id, progress) === "not_started";
+    return d && d < new Date() && labStatus(l.id) === "not_started";
   }).length;
+
+  if (error) {
+    return (
+      <DashboardLayout>
+        <div style={{ textAlign: "center", padding: "64px 0", color: danger }}>{error}</div>
+      </DashboardLayout>
+    );
+  }
 
   return (
     <DashboardLayout>
@@ -300,10 +269,10 @@ export default function LabsPage() {
         }}>
           <div style={{ display: "flex", gap: 28 }}>
             {[
-              { label: "Total Active", value: labs.length,        color: accent   },
-              { label: "Completed",    value: completedCount,     color: "#34d399" },
-              { label: "In Progress",  value: counts.in_progress ?? 0, color: warn },
-              { label: "Overdue",      value: overdueCount,       color: danger   },
+              { label: "Total Active", value: labs.length,              color: accent    },
+              { label: "Completed",    value: completedCount,           color: "#34d399" },
+              { label: "In Progress",  value: counts.in_progress ?? 0,  color: warn      },
+              { label: "Overdue",      value: overdueCount,             color: danger    },
             ].map(({ label, value, color }) => (
               <div key={label}>
                 <div style={{ fontSize: 11, color: muted, marginBottom: 3 }}>{label}</div>
@@ -331,14 +300,9 @@ export default function LabsPage() {
           {FILTERS.map((f) => {
             const isActive = filter === f;
             const meta     = f === "all" ? null : STATUS_META[f];
-            let btnBg     = "transparent";
-            let btnBorder = border;
-            let btnColor  = muted;
-            if (isActive) {
-              btnBg     = meta ? meta.bg     : "#1e3a5f";
-              btnBorder = meta ? meta.border : accent;
-              btnColor  = meta ? meta.color  : "#e2e8f0";
-            }
+            const btnBg     = isActive ? (meta ? meta.bg     : "#1e3a5f") : "transparent";
+            const btnBorder = isActive ? (meta ? meta.border : accent)    : border;
+            const btnColor  = isActive ? (meta ? meta.color  : "#e2e8f0") : muted;
             return (
               <button key={f} type="button" onClick={() => setFilter(f)} style={{
                 background: btnBg, border: `1px solid ${btnBorder}`,
@@ -383,14 +347,13 @@ export default function LabsPage() {
         ) : (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 16 }}>
             {filtered.map((lab) => (
-              <div key={lab.id}>
-                {LabCard({
-                  lab,
-                  statusEntry: progress[lab.id],
-                  deadline: parseDeadline(lab.dueDate),
-                  onOpen: () => navigate(`/labs/${lab.id}`),
-                })}
-              </div>
+              <LabCard
+                key={lab.id}
+                lab={lab}
+                statusEntry={progress[lab.id]}
+                deadline={parseDeadline(lab.dueDate)}
+                onOpen={() => navigate(`/labs/${lab.id}`)}
+              />
             ))}
           </div>
         )}
