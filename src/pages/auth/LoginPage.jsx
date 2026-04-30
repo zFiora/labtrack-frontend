@@ -4,6 +4,7 @@ import {
   getCurrentUser,
   setCurrentUser,
 } from "../../utils/authStorage.js";
+import { api } from "../../utils/api.js";
 
 function LoginPage() {
   const navigate = useNavigate();
@@ -50,7 +51,7 @@ function LoginPage() {
     return /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/.test(password);
   };
 
-  const handleSignIn = (e) => {
+  const handleSignIn = async (e) => {
     e?.preventDefault();
 
     const newErrors = {};
@@ -59,27 +60,20 @@ function LoginPage() {
       newErrors.identifier = "Enter a valid KFUPM email.";
     }
 
-    if (!isStrongPassword(signInData.password)) {
-      newErrors.password =
-        "Password must be at least 8 characters and include uppercase, lowercase, and a number.";
+    if (!signInData.password) {
+      newErrors.password = "Password is required.";
     }
 
     setErrors(newErrors);
     setSuccessMessage("");
 
-    if (Object.keys(newErrors).length === 0) {
-      const users = JSON.parse(localStorage.getItem("users")) || [];
+    if (Object.keys(newErrors).length > 0) return;
 
-      const user = users.find(
-        (u) =>
-          u.email === signInData.identifier &&
-          u.password === signInData.password,
-      );
-
-      if (!user) {
-        setErrors({ identifier: "Invalid email or password." });
-        return;  
-      }
+    try {
+      const user = await api.post("/auth/login", {
+        email: signInData.identifier,
+        password: signInData.password,
+      });
       setCurrentUser(user, signInData.rememberMe);
 
       if (user.role === "admin") {
@@ -89,9 +83,15 @@ function LoginPage() {
       } else {
         navigate("/dashboard");
       }
+    } catch (err) {
+      if (err.status === 403) {
+        setErrors({ identifier: "Your account has been deactivated." });
+      } else {
+        setErrors({ identifier: "Invalid email or password." });
+      }
     }
   };
-  const handleRegister = () => {
+  const handleRegister = async () => {
     const newErrors = {};
 
     if (!registerData.fullName.trim()) {
@@ -104,7 +104,7 @@ function LoginPage() {
 
     if (!isStrongPassword(registerData.password)) {
       newErrors.registerPassword =
-        "Password must be at least 8 characters and include upStudent percase, lowercase, and a number.";
+        "Password must be at least 8 characters and include uppercase, lowercase, and a number.";
     }
 
     if (registerData.confirmPassword !== registerData.password) {
@@ -112,17 +112,15 @@ function LoginPage() {
     }
 
     setErrors(newErrors);
-    if (Object.keys(newErrors).length === 0) {
-      const users = JSON.parse(localStorage.getItem("users")) || [];
+    if (Object.keys(newErrors).length > 0) return;
 
-      users.push({
+    try {
+      await api.post("/auth/register", {
         fullName: registerData.fullName,
         email: registerData.email,
         password: registerData.password,
         role: registerData.role,
       });
-
-      localStorage.setItem("users", JSON.stringify(users));
       setSuccessMessage("Registration successful. You can now sign in.");
       setActiveTab("signin");
       setRegisterData({
@@ -133,6 +131,12 @@ function LoginPage() {
         role: "student",
       });
       setErrors({});
+    } catch (err) {
+      if (err.status === 409) {
+        setErrors({ email: "An account with this email already exists." });
+      } else {
+        setErrors({ email: err.message || "Registration failed. Please try again." });
+      }
     }
   };
 
@@ -143,13 +147,6 @@ function LoginPage() {
 
     if (!isKfupmEmail(forgotPasswordEmail)) {
       newErrors.forgotPasswordEmail = "Enter a valid KFUPM email.";
-    }
-
-    const users = JSON.parse(localStorage.getItem("users")) || [];
-    const userExists = users.some((user) => user.email === forgotPasswordEmail);
-
-    if (!newErrors.forgotPasswordEmail && !userExists) {
-      newErrors.forgotPasswordEmail = "No account was found with this email.";
     }
 
     setErrors(newErrors);

@@ -1,4 +1,4 @@
-const CURRENT_USER_KEY = "currentUser";
+const CURRENT_USER_KEY = "user";
 
 export function getCurrentUser() {
   const storedUser =
