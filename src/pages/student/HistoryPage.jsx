@@ -6,23 +6,16 @@ import { api } from "../../utils/api.js";
 
 export default function HistoryPage() {
   const navigate = useNavigate();
-  const [labs, setLabs]     = useState([]);
-  const [progress, setProgress] = useState({});
-  const [loading, setLoading]   = useState(true);
-  const [error, setError]       = useState(null);
+  const [labs, setLabs]   = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError]     = useState(null);
 
   useEffect(() => {
     const user = getCurrentUser();
     if (!user) { navigate("/"); return; }
 
-    Promise.all([
-      api.get("/student/labs"),
-      api.get("/progress"),
-    ])
-      .then(([fetchedLabs, fetchedProgress]) => {
-        setLabs(fetchedLabs);
-        setProgress(fetchedProgress);
-      })
+    api.get("/student/labs")
+      .then((fetchedLabs) => setLabs(fetchedLabs))
       .catch((err) => {
         if (err.status === 401) { navigate("/"); return; }
         setError("Failed to load history. Please refresh.");
@@ -30,10 +23,9 @@ export default function HistoryPage() {
       .finally(() => setLoading(false));
   }, [navigate]);
 
-  // A lab "has history" if the student has started it (version snapshots are only
-  // saved by students who've opened the workspace at least once)
-  const hasStarted = (labId) => {
-    const s = progress[labId]?.status;
+  // submissionStatus is embedded on each lab by the backend
+  const hasStarted = (lab) => {
+    const s = lab.submissionStatus;
     return s && s !== "not_started";
   };
 
@@ -84,7 +76,7 @@ export default function HistoryPage() {
             gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
           }}>
             {labs.map((lab) => {
-              const started = hasStarted(lab.id);
+              const started = hasStarted(lab);
               return (
                 <div key={lab.id} style={{
                   background: "#0b1424",

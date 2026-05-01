@@ -73,17 +73,26 @@ export default function DashboardPage() {
 
     Promise.all([
       api.get("/student/labs?status=active"),
-      api.get("/progress"),
+      api.get("/student/grades"),
       api.get("/student/courses?enrolled=true"),
     ])
-      .then(([labs, progress, courses]) => {
+      .then(([labs, grades, courses]) => {
+        // Build a progress map from the submissionStatus embedded on each lab
+        const progress = {};
+        labs.forEach((lab) => {
+          progress[lab.id] = {
+            status:      lab.submissionStatus ?? "not_started",
+            submittedAt: lab.submittedAt      ?? null,
+            score:       lab.score            ?? null,
+          };
+        });
+
         const sortedLabs = [...labs].sort((a, b) => {
           const da = a.dueDate ? new Date(a.dueDate).getTime() : Infinity;
           const db = b.dueDate ? new Date(b.dueDate).getTime() : Infinity;
           return da - db;
         });
 
-        // progress shape: { [labId]: { status, submittedAt, score } }
         const labStatus = (labId) => progress[labId]?.status ?? "not_started";
 
         // Upcoming: not submitted/graded, due within 72 h, max 3
@@ -112,20 +121,21 @@ export default function DashboardPage() {
         const completed  = labs.filter((l) => { const s = labStatus(l.id); return s === "submitted" || s === "graded"; }).length;
         const inProgress = labs.filter((l) => labStatus(l.id) === "in_progress").length;
 
-        const scores = Object.values(progress)
-          .map((p) => p.score)
-          .filter((s) => s !== null && s !== undefined);
-        const avgScore = scores.length > 0
-          ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)
+        // avgScore from the grades endpoint (scores are not on lab objects)
+        const scoredGrades = grades.filter((g) => g.score != null);
+        const avgScore = scoredGrades.length > 0
+          ? Math.round(scoredGrades.reduce((a, g) => a + g.score, 0) / scoredGrades.length)
           : null;
 
-        // Recent activity feed
-        const recent = Object.entries(progress)
-          .filter(([, v]) => v.submittedAt)
-          .map(([labId, v]) => {
-            const lab = labs.find((l) => String(l.id) === String(labId));
-            return { labId, title: lab?.title ?? `Lab ${labId}`, submittedAt: v.submittedAt, status: v.status };
-          })
+        // Recent activity feed from labs that have been submitted
+        const recent = labs
+          .filter((l) => progress[l.id]?.submittedAt)
+          .map((l) => ({
+            labId:       l.id,
+            title:       l.title,
+            submittedAt: progress[l.id].submittedAt,
+            status:      progress[l.id].status,
+          }))
           .sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt))
           .slice(0, 4);
 

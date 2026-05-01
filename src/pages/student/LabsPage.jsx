@@ -168,17 +168,25 @@ export default function LabsPage() {
 
     Promise.all([
       api.get("/student/labs?status=active"),
-      api.get("/progress"),
       api.get("/student/courses?enrolled=true"),
     ])
-      .then(([fetchedLabs, fetchedProgress, fetchedCourses]) => {
+      .then(([fetchedLabs, fetchedCourses]) => {
         const sorted = [...fetchedLabs].sort((a, b) => {
           const da = a.dueDate ? new Date(a.dueDate).getTime() : Infinity;
           const db = b.dueDate ? new Date(b.dueDate).getTime() : Infinity;
           return da - db;
         });
+        // Build progress map from submissionStatus embedded on each lab
+        const builtProgress = {};
+        fetchedLabs.forEach((lab) => {
+          builtProgress[lab.id] = {
+            status:      lab.submissionStatus ?? "not_started",
+            submittedAt: lab.submittedAt      ?? null,
+            score:       lab.score            ?? null,
+          };
+        });
         setLabs(sorted);
-        setProgress(fetchedProgress);
+        setProgress(builtProgress);
         setCourses(fetchedCourses);
       })
       .catch((err) => {

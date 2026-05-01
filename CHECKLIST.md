@@ -89,7 +89,7 @@ uses it. This prevents 37 pages from each doing it manually.
   - `setCurrentUser(user, rememberMe)` — no logic change, just key
   - `clearCurrentUser()` — no logic change, just key
 
-- [ ] **1.4 — Verify backend health**
+- [x] **1.4 — Verify backend health**
   - Quick sanity check: `GET http://localhost:5000/api/health`
   - Should return `{ success: true, message: "LabTrack API is running" }`
   - If this fails, fix backend/network before anything else
@@ -205,7 +205,7 @@ uses it. This prevents 37 pages from each doing it manually.
 
 ### File: `src/pages/student/HistoryLabPage.jsx`
 
-- [ ] **3.14 — Replace localStorage with API**
+- [x] **3.14 — Replace localStorage with API**
   - Call `api.get("/student/labs/:labId/versions")`
   - Each version has `{ version, code, timestamp, description }`
   - Remove all `localStorage.getItem("labtrack_versions")` calls
