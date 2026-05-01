@@ -224,7 +224,7 @@ uses it. This prevents 37 pages from each doing it manually.
 
 ### File: `src/pages/student/PeerReviewsPage.jsx`
 
-- [ ] **3.16 — Replace localStorage with API**
+- [x] **3.16 — Replace localStorage with API**
   - Call `api.get("/peer-reviews")`
   - Response: array of reviews — some you sent (you are owner), some assigned to you (you are reviewer)
   - Distinguish: if `reviewerEmail` matches current user's email → it's "assigned to you"
