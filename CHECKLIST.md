@@ -157,38 +157,38 @@ uses it. This prevents 37 pages from each doing it manually.
 
 ### File: `src/pages/student/LabWorkspacePage.jsx`
 
-- [ ] **3.6 — Load lab data from API**
+- [x] **3.6 — Load lab data from API**
   - Remove seed/localStorage lab lookup
   - Call `api.get("/student/labs/:labId")` on mount to get lab details
 
-- [ ] **3.7 — Load existing submission/progress**
+- [x] **3.7 — Load existing submission/progress**
   - Call `api.get("/student/submissions/:labId")` on mount
   - If 404 → student hasn't started, use starter code as initial editor content
   - If found → populate editor with `submission.code` / `submission.files`
   - Also call `api.get("/progress")` or `api.get("/student/submissions/:labId")`
     to restore draft status
 
-- [ ] **3.8 — Wire "Run" button to `POST /api/compile`**
+- [x] **3.8 — Wire "Run" button to `POST /api/compile`**
   - Body: `{ code, language, input: "" }`
   - Returns: `{ output, error, statusCode }`
   - Show output in the terminal panel
   - This is for ad-hoc "run", NOT the test runner
 
-- [ ] **3.9 — Wire "Submit" button to `POST /api/student/submissions/:labId`**
+- [x] **3.9 — Wire "Submit" button to `POST /api/student/submissions/:labId`**
   - Body: `{ code, language }`
   - Returns submission with `testResults` array
   - Show test results in UI
   - Update progress state to `submitted`
 
-- [ ] **3.10 — Wire "Save Draft" / auto-save to `PATCH /api/progress/:labId`**
+- [x] **3.10 — Wire "Save Draft" / auto-save to `PATCH /api/progress/:labId`**
   - Body: `{ status: "in_progress", code }`
   - Call on explicit save or debounced auto-save
 
-- [ ] **3.11 — Wire version save to `POST /api/student/labs/:labId/versions`**
+- [x] **3.11 — Wire version save to `POST /api/student/labs/:labId/versions`**
   - Body: `{ code, description }`
   - Handle 400 (no changes) gracefully — show "No changes since last version"
 
-- [ ] **3.12 — Wire peer review share to `POST /api/peer-reviews/share`**
+- [x] **3.12 — Wire peer review share to `POST /api/peer-reviews/share`**
   - Body: `{ labId, reviewerEmail, fileContents, files }`
   - Remove localStorage peer review logic
 

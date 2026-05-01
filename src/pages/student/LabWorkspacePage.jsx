@@ -2,216 +2,13 @@ import { useState, useEffect, useRef } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import SideBar from "../../components/layout/SideBar";
 import TopBar from "../../components/layout/TopBar";
-
-// ─── Sample Lab Data ─────────────────────────────────────────────────────────
-const LAB_DATA = {
-  id: 9,
-  title: "Lab 9 — Binary Trees",
-  language: "Python",
-  dueDate: "Apr 12, 2026",
-  description: `Implement a Binary Search Tree (BST) in Python.
-
-Your BST class must support:
-  1. insert(val)   — Insert a value into the BST
-  2. search(val)   — Return True if val exists
-  3. inorder()     — Return values in sorted order
-  4. delete(val)   — Remove a value from the BST
-
-Constraints:
-  • Do not use any built-in sort functions
-  • All values are unique integers
-  • Handle edge cases: empty tree, single node`,
-  starterCode: `# Binary Tree Implementation
-# ICS 202 - Lab 9
-
-class Node:
-    def __init__(self, val):
-        self.val = val
-        self.left = None
-        self.right = None
-
-class BinaryTree:
-    def __init__(self):
-        self.root = None
-
-    def insert(self, val):
-        # TODO: implement insert
-        
-
-    def search(self, val):
-        # TODO: implement search
-        
-
-    def inorder(self, node=None):
-        # TODO: implement inorder traversal
-        
-
-    def delete(self, val):
-        # TODO: implement delete
-        
-
-
-# Test your implementation here
-if __name__ == "__main__":
-    tree = BinaryTree()
-    tree.insert(5)
-    tree.insert(3)
-    tree.insert(7)
-    print(tree.inorder())   # Expected: [3, 5, 7]
-    print(tree.search(3))   # Expected: True
-    print(tree.search(9))   # Expected: False
-`,
-  files: ["solution.py", "helpers.py", "tests.py", "README.md"],
-  testCases: [
-    { name: "test_insert_root", status: "pass", points: 10 },
-    { name: "test_insert_left", status: "pass", points: 10 },
-    { name: "test_search_node", status: "fail", points: 10 },
-    { name: "test_inorder_traverse", status: "fail", points: 10 },
-    { name: "test_delete_leaf", status: "hidden", points: 20 },
-    { name: "test_delete_node", status: "hidden", points: 20 },
-  ],
-};
-
-const LAB_DATA_BY_ID = {
-  9: LAB_DATA,
-  10: {
-    id: 10,
-    title: "Lab 10 — Graph Traversal",
-    language: "Python",
-    dueDate: "Apr 19, 2026",
-    description: `Implement graph traversal methods for an adjacency-list graph.
-
-Your Graph class must support:
-  1. add_edge(u, v)  — Add a directed edge
-  2. bfs(start)      — Breadth-first traversal order
-  3. dfs(start)      — Depth-first traversal order
-
-Constraints:
-  • Use collections.deque for BFS queue
-  • Do not use recursion for BFS
-  • Return traversal as a list`,
-    starterCode: `# Graph Traversal Implementation
-# ICS 202 - Lab 10
-
-from collections import deque
-
-class Graph:
-    def __init__(self):
-        self.adj = {}
-
-    def add_edge(self, u, v):
-        # TODO: implement add_edge
-        pass
-
-    def bfs(self, start):
-        # TODO: implement bfs traversal
-        pass
-
-    def dfs(self, start):
-        # TODO: implement dfs traversal
-        pass
-
-
-if __name__ == "__main__":
-    g = Graph()
-    g.add_edge("A", "B")
-    g.add_edge("A", "C")
-    g.add_edge("B", "D")
-    print(g.bfs("A"))   # Expected: ["A", "B", "C", "D"]
-    print(g.dfs("A"))   # Example: ["A", "B", "D", "C"]
-`,
-    files: ["solution.py", "graph_utils.py", "tests.py", "README.md"],
-    testCases: [
-      { name: "test_add_edge", status: "pass", points: 10 },
-      { name: "test_bfs_order", status: "fail", points: 20 },
-      { name: "test_dfs_order", status: "fail", points: 20 },
-      { name: "test_disconnected_graph", status: "hidden", points: 25 },
-      { name: "test_cycle_graph", status: "hidden", points: 25 },
-    ],
-  },
-  11: {
-    id: 11,
-    title: "Lab 11 — Hash Tables",
-    language: "Python",
-    dueDate: "Apr 26, 2026",
-    description: `Build a hash table using chaining.
-
-Your HashTable class must support:
-  1. put(key, value)     — Insert or update key
-  2. get(key)            — Return value for key or None
-  3. remove(key)         — Delete key if it exists
-
-Constraints:
-  • Implement your own hash function
-  • Handle collisions via list chaining
-  • Avoid Python dict for storage`,
-    starterCode: `# Hash Table Implementation
-# ICS 202 - Lab 11
-
-class HashTable:
-    def __init__(self, capacity=10):
-        self.capacity = capacity
-        self.buckets = [[] for _ in range(capacity)]
-
-    def _hash(self, key):
-        # TODO: implement hash function
-        pass
-
-    def put(self, key, value):
-        # TODO: implement put
-        pass
-
-    def get(self, key):
-        # TODO: implement get
-        pass
-
-    def remove(self, key):
-        # TODO: implement remove
-        pass
-
-
-if __name__ == "__main__":
-    ht = HashTable()
-    ht.put("name", "Lina")
-    print(ht.get("name"))  # Expected: Lina
-    ht.remove("name")
-    print(ht.get("name"))  # Expected: None
-`,
-    files: ["solution.py", "hash_helpers.py", "tests.py", "README.md"],
-    testCases: [
-      { name: "test_put_insert", status: "pass", points: 10 },
-      { name: "test_get_existing", status: "pass", points: 20 },
-      { name: "test_remove_key", status: "pass", points: 20 },
-      { name: "test_collision_chain", status: "pass", points: 25 },
-      { name: "test_update_existing", status: "pass", points: 25 },
-    ],
-  },
-};
+import { getCurrentUser } from "../../utils/authStorage.js";
+import { api } from "../../utils/api.js";
 
 const KEYWORDS = [
-  "def",
-  "class",
-  "return",
-  "if",
-  "else",
-  "elif",
-  "while",
-  "for",
-  "in",
-  "not",
-  "and",
-  "or",
-  "True",
-  "False",
-  "None",
-  "import",
-  "from",
-  "pass",
-  "self",
-  "print",
-  "range",
-  "len",
-  "append",
+  "def", "class", "return", "if", "else", "elif", "while", "for", "in",
+  "not", "and", "or", "True", "False", "None", "import", "from", "pass",
+  "self", "print", "range", "len", "append",
 ];
 
 const RUNNABLE_EXTENSIONS_BY_LANGUAGE = {
@@ -249,23 +46,11 @@ function tokenize(text) {
     .filter(Boolean);
   return tokens.map((tok, i) => {
     if (KEYWORDS.includes(tok))
-      return (
-        <span key={i} style={{ color: "#c792ea" }}>
-          {tok}
-        </span>
-      );
+      return <span key={i} style={{ color: "#c792ea" }}>{tok}</span>;
     if (/^["'].*["']$/.test(tok))
-      return (
-        <span key={i} style={{ color: "#c3e88d" }}>
-          {tok}
-        </span>
-      );
+      return <span key={i} style={{ color: "#c3e88d" }}>{tok}</span>;
     if (/^\d+$/.test(tok))
-      return (
-        <span key={i} style={{ color: "#f78c6c" }}>
-          {tok}
-        </span>
-      );
+      return <span key={i} style={{ color: "#f78c6c" }}>{tok}</span>;
     return <span key={i}>{tok}</span>;
   });
 }
@@ -299,47 +84,60 @@ function buildInitialFileContents(files, starterCode) {
   }, {});
 }
 
+function getFileName(file) {
+  if (typeof file === "string") return file;
+  return file?.name || file?.fileName || file?.filename || null;
+}
+
+function normalizeFileList(files) {
+  if (!Array.isArray(files)) return [];
+  return files.map(getFileName).filter(Boolean);
+}
+
+function findProgressForLab(progressData, labId) {
+  if (Array.isArray(progressData?.progress)) {
+    return findProgressForLab(progressData.progress, labId);
+  }
+  const entries = Array.isArray(progressData)
+    ? progressData
+    : Object.values(progressData || {});
+  return entries.find((entry) => String(entry?.labId ?? entry?.id) === String(labId)) ?? null;
+}
+
+function getSubmissionPayload(data) {
+  return data?.submission ?? data;
+}
+
 function buildNewFileContent(fileName) {
   const lowerName = fileName.toLowerCase();
-
-  if (lowerName.endsWith(".py")) {
-    return `# ${fileName}\n\n# Start writing here.\n`;
-  }
-
-  if (lowerName.endsWith(".md")) {
-    return `# ${fileName}\n\nStart writing here.\n`;
-  }
-
+  if (lowerName.endsWith(".py")) return `# ${fileName}\n\n# Start writing here.\n`;
+  if (lowerName.endsWith(".md")) return `# ${fileName}\n\nStart writing here.\n`;
   return "";
 }
 
 function resolveUniqueFileName(candidateName, existingNames, currentName) {
   const trimmed = candidateName.trim();
   if (!trimmed) return "";
-
   if (trimmed === currentName) return trimmed;
-
   if (!existingNames.includes(trimmed)) return trimmed;
 
   let suffix = 2;
   let nextName = `${trimmed} ${suffix}`;
-
   while (existingNames.includes(nextName)) {
     suffix += 1;
     nextName = `${trimmed} ${suffix}`;
   }
-
   return nextName;
 }
 
 function sidebarFileIcon(name) {
-  if (name.endsWith(".py")) return "🐍";
-  if (name.endsWith(".md")) return "📄";
+  if (name.endsWith(".py"))   return "🐍";
+  if (name.endsWith(".md"))   return "📄";
   if (name.endsWith(".java")) return "☕";
   if (name.endsWith(".html")) return "🌐";
-  if (name.endsWith(".css")) return "🎨";
-  if (name.endsWith(".jsx")) return "⚛️";
-  if (name.endsWith(".js")) return "🟨";
+  if (name.endsWith(".css"))  return "🎨";
+  if (name.endsWith(".jsx"))  return "⚛️";
+  if (name.endsWith(".js"))   return "🟨";
   return "📋";
 }
 
@@ -348,50 +146,40 @@ export default function LabWorkspacePage() {
   const location = useLocation();
   const navigate = useNavigate();
   const { labId } = useParams();
-  const numericLabId = Number(labId);
-  const hasValidLab = Object.prototype.hasOwnProperty.call(
-    LAB_DATA_BY_ID,
-    numericLabId,
-  );
-  const selectedLab = LAB_DATA_BY_ID[Number(labId)] ?? LAB_DATA;
   const restoredSnapshot = location.state?.restoredSnapshot;
-  const currentLabId = String(selectedLab.id);
-  const titleSuffix = selectedLab.title.includes("—")
-    ? selectedLab.title.split("—").slice(1).join("—").trim()
-    : selectedLab.title;
-  const pageTitle = `Lab ${currentLabId} — ${titleSuffix}`;
-  const initialSolutionFile =
-    selectedLab.files.find(
-      (f) =>
-        f.toLowerCase().includes("solution") && f.toLowerCase().endsWith(".py"),
-    ) || selectedLab.files[0];
-  const [files, setFiles] = useState(selectedLab.files);
-  const [openFiles, setOpenFiles] = useState(selectedLab.files);
-  const [activeFile, setActiveFile] = useState(() => {
-    return initialSolutionFile;
-  });
-  const [fileContents, setFileContents] = useState(() =>
-    buildInitialFileContents(selectedLab.files, selectedLab.starterCode),
-  );
-  const [testResults, setTestResults] = useState(selectedLab.testCases);
+
+  // ── API state ────────────────────────────────────────────────────────────
+  const [lab, setLab]           = useState(null);
+  const [labLoading, setLabLoading] = useState(true);
+  const [labError, setLabError] = useState(null);
+
+  // ── Editor state ─────────────────────────────────────────────────────────
+  const [files, setFiles]             = useState([]);
+  const [openFiles, setOpenFiles]     = useState([]);
+  const [activeFile, setActiveFile]   = useState(null);
+  const [fileContents, setFileContents] = useState({});
+  const [testResults, setTestResults] = useState([]);
   const [consoleTranscript, setConsoleTranscript] = useState("");
   const [consolePromptInput, setConsolePromptInput] = useState("");
   const [consolePendingRun, setConsolePendingRun] = useState(null);
   const consoleRef = useRef(null);
   const [consoleMeta, setConsoleMeta] = useState(null);
-  const [isRunning, setIsRunning] = useState(false);
-  const [showSubmit, setShowSubmit] = useState(false);
+  const [isRunning, setIsRunning]     = useState(false);
+  const [showSubmit, setShowSubmit]   = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [filePendingDelete, setFilePendingDelete] = useState(null);
-  const [submitted, setSubmitted] = useState(false);
+  const [submitted, setSubmitted]     = useState(false);
+  const [progressStatus, setProgressStatus] = useState("not_started");
+  const [saveState, setSaveState] = useState("idle");
+  const [submitError, setSubmitError] = useState("");
   const [showVersionModal, setShowVersionModal] = useState(false);
   const [versionDesc, setVersionDesc] = useState("");
   const [versionDescErr, setVersionDescErr] = useState("");
   const [versionToast, setVersionToast] = useState("");
   const [showShareModal, setShowShareModal] = useState(false);
-  const [shareEmail, setShareEmail] = useState("");
+  const [shareEmail, setShareEmail]   = useState("");
   const [shareEmailErr, setShareEmailErr] = useState("");
-  const [shareToast, setShareToast] = useState("");
+  const [shareToast, setShareToast]   = useState("");
   const [shareLinkCopied, setShareLinkCopied] = useState(false);
   const [descCollapsed, setDescCollapsed] = useState(false);
   const [isAddingPage, setIsAddingPage] = useState(false);
@@ -400,46 +188,120 @@ export default function LabWorkspacePage() {
   const [renameDraft, setRenameDraft] = useState("");
   const [hoveredFile, setHoveredFile] = useState(null);
   const [hoveredSidebarFile, setHoveredSidebarFile] = useState(null);
-  const [draggedTab, setDraggedTab] = useState(null);
+  const [draggedTab, setDraggedTab]   = useState(null);
   const [dragOverTab, setDragOverTab] = useState(null);
+  const initialLoadCompleteRef = useRef(false);
+  const autoSaveTimerRef = useRef(null);
+  const lastSavedCodeRef = useRef("");
 
+  // ── Load lab + existing submission ────────────────────────────────────────
   useEffect(() => {
-    const nextSolutionFile =
-      selectedLab.files.find(
-        (f) =>
-          f.toLowerCase().includes("solution") &&
-          f.toLowerCase().endsWith(".py"),
-      ) || selectedLab.files[0];
+    const user = getCurrentUser();
+    if (!user) { navigate("/"); return; }
+    initialLoadCompleteRef.current = false;
 
-    setFiles(selectedLab.files);
-    setOpenFiles(selectedLab.files);
-    setActiveFile(nextSolutionFile);
-    setFileContents(
-      buildInitialFileContents(selectedLab.files, selectedLab.starterCode),
-    );
-    setTestResults(selectedLab.testCases);
-    setConsoleTranscript("");
-    setConsolePromptInput("");
-    setConsolePendingRun(null);
-    setConsoleMeta(null);
+    Promise.all([
+      api.get(`/student/labs/${labId}`),
+      api.get(`/student/submissions/${labId}`).catch((err) => {
+        if (err.status === 404) return null;
+        throw err;
+      }),
+      api.get("/progress").catch(() => null),
+    ])
+      .then(([labData, submissionData, progressData]) => {
+        const submission = getSubmissionPayload(submissionData);
+        const progress = findProgressForLab(progressData, labId);
+        setLab(labData);
 
-    if (
-      restoredSnapshot &&
-      Number(restoredSnapshot.labId) === Number(selectedLab.id) &&
-      typeof restoredSnapshot.code === "string"
-    ) {
-      setFileContents((currentContents) => ({
-        ...currentContents,
-        [nextSolutionFile]: restoredSnapshot.code,
-      }));
-    }
-  }, [restoredSnapshot, selectedLab]);
+        const labFileNames = normalizeFileList(labData.files);
+        const submissionFiles =
+          submission?.files && typeof submission.files === "object"
+            ? Object.keys(submission.files)
+            : [];
+        const progressFiles =
+          progress?.files && typeof progress.files === "object"
+            ? Object.keys(progress.files)
+            : [];
+        const labFiles = Array.from(new Set([
+          ...(labFileNames.length ? labFileNames : ["solution.py"]),
+          ...submissionFiles,
+          ...progressFiles,
+        ]));
+        const starterCode = labData.starterCode ?? "";
+        const solutionFile =
+          labFiles.find((f) => f.toLowerCase().includes("solution") && f.toLowerCase().endsWith(".py")) ||
+          labFiles[0];
+
+        const contents = {
+          ...buildInitialFileContents(labFiles, starterCode),
+          ...(progress?.files && typeof progress.files === "object" ? progress.files : {}),
+          ...(submission?.files && typeof submission.files === "object" ? submission.files : {}),
+        };
+
+        // Restored snapshot takes priority over saved submission
+        if (
+          restoredSnapshot &&
+          String(restoredSnapshot.labId) === String(labId) &&
+          typeof restoredSnapshot.code === "string"
+        ) {
+          contents[solutionFile] = restoredSnapshot.code;
+        } else if (typeof submission?.code === "string") {
+          contents[solutionFile] = submission.code;
+        } else if (typeof progress?.code === "string") {
+          contents[solutionFile] = progress.code;
+        }
+
+        setFiles(labFiles);
+        setOpenFiles(labFiles);
+        setActiveFile(solutionFile);
+        setFileContents(contents);
+        setTestResults(submission?.testResults ?? labData.testCases ?? []);
+        setProgressStatus(submission?.status ?? progress?.status ?? "not_started");
+        lastSavedCodeRef.current = contents[solutionFile] ?? "";
+        initialLoadCompleteRef.current = true;
+      })
+      .catch((err) => {
+        if (err.status === 401) { navigate("/"); return; }
+        setLabError("Failed to load lab. Please refresh.");
+      })
+      .finally(() => setLabLoading(false));
+  }, [labId, navigate, restoredSnapshot]);
 
   const code = fileContents[activeFile] ?? "";
 
+  const saveDraft = async ({ silent = false } = {}) => {
+    if (!activeFile) return;
+    if (!silent) setSaveState("saving");
+
+    try {
+      await api.patch(`/progress/${labId}`, {
+        status: "in_progress",
+        code: fileContents[activeFile] ?? "",
+      });
+      lastSavedCodeRef.current = fileContents[activeFile] ?? "";
+      setProgressStatus("in_progress");
+      setSaveState(silent ? "idle" : "saved");
+      if (!silent) setTimeout(() => setSaveState("idle"), 2000);
+    } catch {
+      setSaveState("error");
+    }
+  };
+
+  useEffect(() => {
+    if (!initialLoadCompleteRef.current || !activeFile || submitted) return;
+    if (code === lastSavedCodeRef.current) return;
+
+    setSaveState("saving");
+    clearTimeout(autoSaveTimerRef.current);
+    autoSaveTimerRef.current = setTimeout(() => {
+      saveDraft({ silent: true });
+    }, 900);
+
+    return () => clearTimeout(autoSaveTimerRef.current);
+  }, [activeFile, code, submitted]);
+
   const handleCreatePage = () => {
     const nextName = resolveUniqueFileName(newPageName, files);
-
     if (!nextName) return;
 
     setFiles((currentFiles) => [...currentFiles, nextName]);
@@ -460,7 +322,6 @@ export default function LabWorkspacePage() {
 
   const commitRenamePage = () => {
     if (!renamingFile) return;
-
     const nextName = resolveUniqueFileName(renameDraft, files, renamingFile);
     if (!nextName || nextName === renamingFile) {
       setRenamingFile(null);
@@ -469,19 +330,14 @@ export default function LabWorkspacePage() {
     }
 
     setFiles((currentFiles) =>
-      currentFiles.map((fileName) =>
-        fileName === renamingFile ? nextName : fileName,
-      ),
+      currentFiles.map((fileName) => (fileName === renamingFile ? nextName : fileName)),
     );
     setOpenFiles((currentOpenFiles) =>
-      currentOpenFiles.map((fileName) =>
-        fileName === renamingFile ? nextName : fileName,
-      ),
+      currentOpenFiles.map((fileName) => (fileName === renamingFile ? nextName : fileName)),
     );
     setFileContents((currentContents) => {
       const nextContents = { ...currentContents };
-      nextContents[nextName] =
-        nextContents[renamingFile] ?? buildNewFileContent(nextName);
+      nextContents[nextName] = nextContents[renamingFile] ?? buildNewFileContent(nextName);
       delete nextContents[renamingFile];
       return nextContents;
     });
@@ -498,23 +354,12 @@ export default function LabWorkspacePage() {
   };
 
   const handleRenameKeyDown = (event) => {
-    if (event.key === "Enter") {
-      event.preventDefault();
-      commitRenamePage();
-    }
-
-    if (event.key === "Escape") {
-      event.preventDefault();
-      cancelRenamePage();
-    }
+    if (event.key === "Enter") { event.preventDefault(); commitRenamePage(); }
+    if (event.key === "Escape") { event.preventDefault(); cancelRenamePage(); }
   };
 
   const handleNewPageKeyDown = (event) => {
-    if (event.key === "Enter") {
-      event.preventDefault();
-      handleCreatePage();
-    }
-
+    if (event.key === "Enter") { event.preventDefault(); handleCreatePage(); }
     if (event.key === "Escape") {
       event.preventDefault();
       setIsAddingPage(false);
@@ -525,17 +370,12 @@ export default function LabWorkspacePage() {
   const handleCloseTab = (fileToClose) => {
     setOpenFiles((currentOpenFiles) => {
       const nextOpenFiles = currentOpenFiles.filter((f) => f !== fileToClose);
-
-      if (activeFile === fileToClose) {
-        setActiveFile(nextOpenFiles[0] ?? null);
-      }
-
+      if (activeFile === fileToClose) setActiveFile(nextOpenFiles[0] ?? null);
       return nextOpenFiles;
     });
   };
 
   const handleTabDragStart = (event, fileName) => {
-    // Needed for consistent drag behavior across browsers.
     event.dataTransfer.setData("text/plain", fileName);
     event.dataTransfer.effectAllowed = "move";
     setDraggedTab(fileName);
@@ -544,15 +384,12 @@ export default function LabWorkspacePage() {
 
   const handleTabDragOver = (event, fileName) => {
     event.preventDefault();
-    if (dragOverTab !== fileName) {
-      setDragOverTab(fileName);
-    }
+    if (dragOverTab !== fileName) setDragOverTab(fileName);
   };
 
   const handleTabDrop = (event, targetFile) => {
     event.preventDefault();
     event.stopPropagation();
-
     if (!draggedTab || draggedTab === targetFile) {
       setDragOverTab(null);
       setDraggedTab(null);
@@ -563,13 +400,11 @@ export default function LabWorkspacePage() {
       const sourceIndex = currentOpenFiles.indexOf(draggedTab);
       const targetIndex = currentOpenFiles.indexOf(targetFile);
       if (sourceIndex === -1 || targetIndex === -1) return currentOpenFiles;
-
       const reordered = [...currentOpenFiles];
       reordered.splice(sourceIndex, 1);
       reordered.splice(targetIndex, 0, draggedTab);
       return reordered;
     });
-
     setDragOverTab(null);
     setDraggedTab(null);
   };
@@ -582,24 +417,15 @@ export default function LabWorkspacePage() {
   const handleDeleteFile = (fileToDelete) => {
     const remainingFiles = files.filter((f) => f !== fileToDelete);
     const remainingOpenFiles = openFiles.filter((f) => f !== fileToDelete);
-
     setFiles(remainingFiles);
     setOpenFiles(remainingOpenFiles);
-
     setFileContents((currentContents) => {
       const nextContents = { ...currentContents };
       delete nextContents[fileToDelete];
       return nextContents;
     });
-
-    if (activeFile === fileToDelete) {
-      setActiveFile(remainingOpenFiles[0] ?? remainingFiles[0] ?? null);
-    }
-
-    if (renamingFile === fileToDelete) {
-      setRenamingFile(null);
-      setRenameDraft("");
-    }
+    if (activeFile === fileToDelete) setActiveFile(remainingOpenFiles[0] ?? remainingFiles[0] ?? null);
+    if (renamingFile === fileToDelete) { setRenamingFile(null); setRenameDraft(""); }
   };
 
   const requestDeleteFile = (fileName) => {
@@ -619,22 +445,17 @@ export default function LabWorkspacePage() {
     setFilePendingDelete(null);
   };
 
-  const handleRun = () => {
+  // ── Run ──────────────────────────────────────────────────────────────────
+  const handleRun = async () => {
     if (!isActiveFileRunnable) {
       setConsoleTranscript(
-        `Cannot run ${activeFile}. This lab only supports ${supportedExtensions.map((ext) => `.${ext}`).join(", ")} files.`,
+        `Cannot run ${activeFile}. This lab only supports ${supportedExtensions.map((e) => `.${e}`).join(", ")} files.`,
       );
       setConsolePromptInput("");
       setConsolePendingRun(null);
-      setConsoleMeta({
-        isError: true,
-        time: new Date().toLocaleTimeString(),
-        runtime: "0.000s",
-      });
+      setConsoleMeta({ isError: true, time: new Date().toLocaleTimeString(), runtime: "0.000s" });
       return;
     }
-
-    const shouldPauseForInput = selectedLab.id === 10;
 
     setIsRunning(true);
     setConsoleTranscript("");
@@ -642,79 +463,44 @@ export default function LabWorkspacePage() {
     setConsolePendingRun(null);
     setConsoleMeta(null);
 
-    setTimeout(() => {
-      const sourceCode = fileContents[activeFile] ?? "";
-      const hasInsert =
-        sourceCode.includes("self.root") &&
-        !sourceCode.includes("# TODO: implement insert");
-      const hasSearch =
-        sourceCode.includes("def search") &&
-        !sourceCode.includes("# TODO: implement search");
-      const hasInorder =
-        sourceCode.includes("append") && sourceCode.includes("inorder");
-
-      const updated = testResults.map((t) => {
-        if (t.status === "hidden") return t;
-        if (t.name === "test_insert_root")
-          return { ...t, status: hasInsert ? "pass" : "fail" };
-        if (t.name === "test_insert_left")
-          return { ...t, status: hasInsert ? "pass" : "fail" };
-        if (t.name === "test_search_node")
-          return { ...t, status: hasSearch ? "pass" : "fail" };
-        if (t.name === "test_inorder_traverse")
-          return { ...t, status: hasInorder ? "pass" : "fail" };
-        return t;
+    try {
+      const result = await api.post("/compile", {
+        code: fileContents[activeFile] ?? "",
+        language: (lab?.language ?? "python").toLowerCase(),
+        input: "",
       });
-      setTestResults(updated);
 
-      const fails = updated.filter((r) => r.status === "fail");
-      const isError = fails.length > 0;
-      const outputText = isError
-        ? "AssertionError: Expected [1,2,3]\nGot [1,3]\nLine 16, inorder()"
-        : "[3, 5, 7]\nTrue\nFalse\n\nAll visible tests passed! ✓";
+      const output = result.output ?? result.stdout ?? "";
+      const errOut = result.error ?? result.stderr ?? "";
+      const isError =
+        !!errOut ||
+        (result.statusCode !== undefined && result.statusCode !== 0) ||
+        (result.exitCode !== undefined && result.exitCode !== 0);
 
-      const needsInput =
-        sourceCode.includes("input(") ||
-        sourceCode.includes("sys.stdin") ||
-        sourceCode.includes("stdin");
-
-      if (needsInput || shouldPauseForInput) {
-        setConsoleTranscript("Enter the starting node:\n>>> ");
-        setConsolePromptInput("");
-        setConsolePendingRun({
-          outputText,
-          isError,
-          time: new Date().toLocaleTimeString(),
-          runtime: isError ? "0.043s" : "0.031s",
-          requiresInput: shouldPauseForInput,
-        });
-        setConsoleMeta({
-          isError: false,
-          time: "Waiting for input",
-          runtime: "pending",
-        });
-        setIsRunning(false);
-        return;
-      }
-
-      setConsoleTranscript(outputText);
+      setConsoleTranscript(isError ? errOut || output : output || "Program exited with no output.");
       setConsoleMeta({
         isError,
         time: new Date().toLocaleTimeString(),
-        runtime: isError ? "0.043s" : "0.031s",
+        runtime: result.executionTime ? `${result.executionTime}s` : result.time ? `${result.time}s` : "—",
       });
+
+      if (Array.isArray(result.testResults)) {
+        setTestResults(result.testResults);
+      }
+    } catch (err) {
+      setConsoleTranscript(err.message ?? "Compilation failed.");
+      setConsoleMeta({ isError: true, time: new Date().toLocaleTimeString(), runtime: "0.000s" });
+    } finally {
       setIsRunning(false);
-    }, 1400);
+    }
   };
 
   const finalizeConsoleInput = () => {
     if (!consolePendingRun) return;
-
     const inputLine = consolePromptInput.trim();
     const continuationText = consolePendingRun.requiresInput
       ? `\nStarting traversal from node ${inputLine || "<no input>"}\n\n${consolePendingRun.outputText}`
       : consolePendingRun.outputText;
-
     setConsoleTranscript((currentTranscript) => {
       const separator = currentTranscript.endsWith(">>> ") ? "" : "\n";
       return `${currentTranscript}${inputLine}${separator}${continuationText}`;
@@ -731,18 +517,13 @@ export default function LabWorkspacePage() {
 
   const handleConsoleChange = (event) => {
     if (!consolePendingRun) return;
-
     const nextValue = event.target.value;
-    if (!nextValue.startsWith(consoleTranscript)) {
-      return;
-    }
-
+    if (!nextValue.startsWith(consoleTranscript)) return;
     setConsolePromptInput(nextValue.slice(consoleTranscript.length));
   };
 
   const handleConsoleKeyDown = (event) => {
     if (!consolePendingRun) return;
-
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
       finalizeConsoleInput();
@@ -751,12 +532,12 @@ export default function LabWorkspacePage() {
 
   useEffect(() => {
     if (!consolePendingRun || !consoleRef.current) return;
-
     const caret = consoleRef.current.value.length;
     consoleRef.current.setSelectionRange(caret, caret);
   }, [consolePendingRun, consoleTranscript, consolePromptInput]);
 
-  const handleSaveVersion = () => {
+  // ── Save Version ─────────────────────────────────────────────────────────
+  const handleSaveVersion = async () => {
     const desc = versionDesc.trim();
     if (desc.length < 5) {
       setVersionDescErr("Description must be at least 5 characters.");
@@ -764,139 +545,106 @@ export default function LabWorkspacePage() {
     }
     setVersionDescErr("");
 
-    const VERSIONS_KEY = "labtrack_versions";
     try {
-      const user = JSON.parse(localStorage.getItem("currentUser") || "{}");
-      const uid  = user.id || user.email || "guest";
-      const all  = JSON.parse(localStorage.getItem(VERSIONS_KEY) || "{}");
-      const labVersions = all[selectedLab.id] || [];
-
-      const currentCode = fileContents[activeFile] ?? "";
-      if (labVersions.length > 0 && labVersions[0].code === currentCode) {
-        setVersionDescErr("No changes since the last saved version.");
-        return;
-      }
-      if (labVersions.length >= 50) {
-        labVersions.pop();
-      }
-
-      const vNum = labVersions.length + 1;
-      const passed2 = testResults.filter((r) => r.status === "pass").length;
-      const total2  = testResults.filter((r) => r.status !== "hidden").length;
-      const newVersion = {
-        id: `v${vNum}`,
-        labId: selectedLab.id,
-        uid,
-        label: `v${vNum} — ${desc}`,
-        timestamp: new Date().toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }),
-        status: "saved",
-        testsPassed: passed2,
-        totalTests: total2,
-        score: null,
-        code: currentCode,
-      };
-      all[selectedLab.id] = [newVersion, ...labVersions];
-      localStorage.setItem(VERSIONS_KEY, JSON.stringify(all));
-
+      await api.post(`/student/labs/${labId}/versions`, {
+        code: fileContents[activeFile] ?? "",
+        description: desc,
+      });
       setShowVersionModal(false);
       setVersionDesc("");
-      setVersionToast(`Version v${vNum} saved successfully`);
+      setVersionToast("Version saved successfully");
       setTimeout(() => setVersionToast(""), 3000);
-    } catch (e) {
-      console.warn("Could not save version", e);
-      setVersionDescErr("Failed to save version. Please try again.");
+    } catch (err) {
+      if (err.status === 400 && /no changes/i.test(err.message ?? "")) {
+        setVersionDescErr("No changes since last version");
+      } else {
+        setVersionDescErr(err.message ?? "Failed to save version. Please try again.");
+      }
     }
   };
 
-  const handleShare = () => {
+  // ── Share for Review ─────────────────────────────────────────────────────
+  const handleShare = async () => {
     const email = shareEmail.trim().toLowerCase();
     if (!email.endsWith("@kfupm.edu.sa")) {
       setShareEmailErr("Must be a valid @kfupm.edu.sa email address.");
       return;
     }
+
+    const user = getCurrentUser();
+    if (user && user.email.toLowerCase() === email) {
+      setShareEmailErr("You cannot share a review with yourself.");
+      return;
+    }
+
     try {
-      const user = JSON.parse(localStorage.getItem("currentUser") || "{}");
-      if ((user.email || "").toLowerCase() === email) {
-        setShareEmailErr("You cannot share a review with yourself.");
-        return;
-      }
-      const uid = user.id || user.email || "guest";
-      const PEER_REVIEWS_KEY = "labtrack_peer_reviews";
-      const all = JSON.parse(localStorage.getItem(PEER_REVIEWS_KEY) || "[]");
-      const existing = all.filter(
-        (r) => r.ownerUid === uid && r.labId === selectedLab.id && r.reviewerEmail === email
-      );
-      if (existing.length >= 3) {
-        setShareEmailErr("Maximum 3 collaborators per lab reached.");
-        return;
-      }
-      const currentCode = fileContents[activeFile] ?? "";
-      const passed2 = testResults.filter((r) => r.status === "pass").length;
-      const total2  = testResults.filter((r) => r.status !== "hidden").length;
-      const record = {
-        id: `pr_${Date.now()}`,
-        labId: selectedLab.id,
-        labTitle: selectedLab.title,
-        ownerUid: uid,
-        ownerName: user.fullName || user.email || "Student",
+      await api.post("/peer-reviews/share", {
+        labId,
         reviewerEmail: email,
-        files: [activeFile || "solution.py"],
-        fileContents: { [activeFile || "solution.py"]: currentCode },
-        testsPassed: `${passed2}/${total2}`,
-        sharedAt: new Date().toISOString(),
-        dueDate: new Date(Date.now() + 7 * 86400000).toISOString(),
-        status: "pending",
-        review: null,
-      };
-      localStorage.setItem(PEER_REVIEWS_KEY, JSON.stringify([...all, record]));
+        fileContents,
+        files,
+      });
       setShowShareModal(false);
       setShareEmail("");
       setShareToast(`Shared with ${email} for review`);
       setTimeout(() => setShareToast(""), 3500);
-    } catch (e) {
-      console.warn("Could not save peer review share", e);
-      setShareEmailErr("Failed to share. Please try again.");
+    } catch (err) {
+      if (err.status === 409) {
+        setShareEmailErr("You have already shared with this reviewer.");
+      } else {
+        setShareEmailErr(err.message ?? "Failed to share. Please try again.");
+      }
     }
   };
 
-  const handleConfirmSubmit = () => {
+  // ── Submit ───────────────────────────────────────────────────────────────
+  const handleConfirmSubmit = async () => {
     setShowSubmit(false);
-    setSubmitted(true);
-    // Persist submission status so DashboardPage / LabsPage can read it
+    setSubmitError("");
+
     try {
-      const user = JSON.parse(localStorage.getItem("currentUser") || "{}");
-      const key = "labtrack_student_progress";
-      const all = JSON.parse(localStorage.getItem(key) || "{}");
-      const uid = user.id || user.email || "guest";
-      all[uid] = all[uid] || {};
-      all[uid][selectedLab.id] = {
-        status: "submitted",
-        submittedAt: new Date().toISOString(),
-        score: null,
-      };
-      localStorage.setItem(key, JSON.stringify(all));
-    } catch (e) { console.warn("Could not persist submission status", e); }
-    setTimeout(() => navigate("/dashboard"), 2200);
+      const submission = getSubmissionPayload(await api.post(`/student/submissions/${labId}`, {
+        code: fileContents[activeFile] ?? "",
+        language: (lab?.language ?? "python").toLowerCase(),
+      }));
+      if (Array.isArray(submission?.testResults)) {
+        setTestResults(submission.testResults);
+      }
+      setProgressStatus("submitted");
+      setSubmitted(true);
+    } catch (err) {
+      setSubmitError(err.message ?? "Submission failed. Please try again.");
+    }
   };
 
-  const visibleTests = testResults.filter((r) => r.status !== "hidden");
+  const visibleTests = testResults.filter((r) => r.status !== "hidden" && r.type !== "hidden");
   const passed = visibleTests.filter((r) => r.status === "pass").length;
   const visibleTotal = visibleTests.length;
   const supportedExtensions =
-    RUNNABLE_EXTENSIONS_BY_LANGUAGE[selectedLab.language.toLowerCase()] ?? [];
+    RUNNABLE_EXTENSIONS_BY_LANGUAGE[(lab?.language ?? "python").toLowerCase()] ?? [];
   const activeFileExtension = activeFile ? getFileExtension(activeFile) : "";
-  const isActiveFileRunnable =
-    !!activeFile && supportedExtensions.includes(activeFileExtension);
+  const isActiveFileRunnable = !!activeFile && supportedExtensions.includes(activeFileExtension);
+  const saveLabel = saveState === "saving"
+    ? "Saving..."
+    : saveState === "saved"
+      ? "Saved"
+      : saveState === "error"
+        ? "Save failed"
+        : "Save Draft";
   const lines = code.split("\n");
 
   const handleEditorChange = (value) => {
-    setFileContents((prev) => ({
-      ...prev,
-      [activeFile]: value,
-    }));
+    if (!activeFile) return;
+    setFileContents((prev) => ({ ...prev, [activeFile]: value }));
   };
 
-  // ── Styles ──────────────────────────────────────────────────────────────────
+  const pageTitle = lab
+    ? (lab.title?.includes("—")
+        ? `Lab ${labId} — ${lab.title.split("—").slice(1).join("—").trim()}`
+        : `Lab ${labId} — ${lab.title ?? ""}`)
+    : "Lab Workspace";
+
+  // ── Styles ──────────────────────────────────────────────────────────────
   const bg0 = "#050b18";
   const bg1 = "#080f1e";
   const bg2 = "#0b1424";
@@ -906,8 +654,20 @@ export default function LabWorkspacePage() {
   const dimmed = "#4a5568";
   const panelHeaderHeight = 46;
 
-  if (!hasValidLab) {
-    return null;
+  if (labLoading) {
+    return (
+      <div style={{ display: "flex", height: "100vh", background: bg0, color: muted, alignItems: "center", justifyContent: "center", fontSize: 14 }}>
+        Loading lab…
+      </div>
+    );
+  }
+
+  if (labError) {
+    return (
+      <div style={{ display: "flex", height: "100vh", background: bg0, color: "#f87171", alignItems: "center", justifyContent: "center", fontSize: 14 }}>
+        {labError}
+      </div>
+    );
   }
 
   return (
@@ -1097,6 +857,7 @@ export default function LabWorkspacePage() {
                 {descCollapsed ? "›" : "‹"}
               </button>
             </div>
+
             {!descCollapsed && (
               <div style={{ padding: 16, overflow: "auto", flex: 1 }}>
                 <div
@@ -1116,7 +877,7 @@ export default function LabWorkspacePage() {
                       color: "#f59e0b",
                     }}
                   >
-                    ⏰ Due: {selectedLab.dueDate}
+                    {lab?.dueDate ? `⏰ Due: ${new Date(lab.dueDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}` : "No due date"}
                   </span>
                   <span
                     style={{
@@ -1127,7 +888,7 @@ export default function LabWorkspacePage() {
                       color: accent,
                     }}
                   >
-                    🐍 {selectedLab.language}
+                    🐍 {lab?.language ?? "Python"}
                   </span>
                 </div>
                 <pre
@@ -1140,7 +901,7 @@ export default function LabWorkspacePage() {
                     margin: 0,
                   }}
                 >
-                  {selectedLab.description}
+                  {lab?.description ?? ""}
                 </pre>
               </div>
             )}
@@ -1172,7 +933,6 @@ export default function LabWorkspacePage() {
                 setOpenFiles((currentOpenFiles) => {
                   const sourceIndex = currentOpenFiles.indexOf(draggedTab);
                   if (sourceIndex === -1) return currentOpenFiles;
-
                   const reordered = [...currentOpenFiles];
                   reordered.splice(sourceIndex, 1);
                   reordered.push(draggedTab);
@@ -1313,6 +1073,21 @@ export default function LabWorkspacePage() {
                   +
                 </button>
               )}
+              <div
+                style={{
+                  marginLeft: "auto",
+                  padding: "0 14px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  color: saveState === "error" ? "#f87171" : "#6b7a99",
+                  fontSize: 11,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                <span>{saveLabel}</span>
+                <span style={{ color: dimmed }}>Status: {progressStatus.replace("_", " ")}</span>
+              </div>
             </div>
 
             {/* Editor */}
@@ -1348,8 +1123,7 @@ export default function LabWorkspacePage() {
                       padding: "16px",
                       fontSize: 13,
                       lineHeight: "1.6",
-                      fontFamily:
-                        "'JetBrains Mono','Fira Code','Courier New',monospace",
+                      fontFamily: "'JetBrains Mono','Fira Code','Courier New',monospace",
                       color: "#cdd6f4",
                       pointerEvents: "none",
                       whiteSpace: "pre",
@@ -1375,8 +1149,7 @@ export default function LabWorkspacePage() {
                       padding: "16px",
                       fontSize: 13,
                       lineHeight: "1.6",
-                      fontFamily:
-                        "'JetBrains Mono','Fira Code','Courier New',monospace",
+                      fontFamily: "'JetBrains Mono','Fira Code','Courier New',monospace",
                       background: "transparent",
                       color: "transparent",
                       caretColor: accent,
@@ -1450,39 +1223,45 @@ export default function LabWorkspacePage() {
                     background: bg2,
                   }}
                 >
-                  {visibleTests.map((t, index) => (
-                    <div
-                      key={t.name}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        padding: "9px 14px",
-                        borderBottom:
-                          index === visibleTests.length - 1
-                            ? "none"
-                            : `1px solid #0f1b30`,
-                      }}
-                    >
-                      <span
+                  {visibleTests.length === 0 ? (
+                    <div style={{ padding: "12px 14px", fontSize: 12, color: dimmed }}>
+                      Run the lab to see test results.
+                    </div>
+                  ) : (
+                    visibleTests.map((t, index) => (
+                      <div
+                        key={t.name}
                         style={{
-                          fontSize: 12,
-                          fontFamily: "monospace",
-                          color:
-                            t.status === "pass"
-                              ? "#4ade80"
-                              : t.status === "fail"
-                                ? "#f87171"
-                                : "#6b7a99",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          padding: "9px 14px",
+                          borderBottom:
+                            index === visibleTests.length - 1
+                              ? "none"
+                              : `1px solid #0f1b30`,
                         }}
                       >
-                        {t.name}
-                      </span>
-                      <span style={{ fontSize: 14 }}>
-                        {t.status === "pass" ? "✓" : "✗"}
-                      </span>
-                    </div>
-                  ))}
+                        <span
+                          style={{
+                            fontSize: 12,
+                            fontFamily: "monospace",
+                            color:
+                              t.status === "pass"
+                                ? "#4ade80"
+                                : t.status === "fail"
+                                  ? "#f87171"
+                                  : "#6b7a99",
+                          }}
+                        >
+                          {t.name}
+                        </span>
+                        <span style={{ fontSize: 14 }}>
+                          {t.status === "pass" ? "✓" : "✗"}
+                        </span>
+                      </div>
+                    ))
+                  )}
                 </div>
               </div>
 
@@ -1514,7 +1293,7 @@ export default function LabWorkspacePage() {
                       ? "Type input and press Enter"
                       : isActiveFileRunnable
                         ? "Run the lab to see output here."
-                        : `Select a ${selectedLab.language} source file to run.`
+                        : `Select a ${lab?.language ?? "Python"} source file to run.`
                   }
                   spellCheck={false}
                   style={{
@@ -1560,24 +1339,10 @@ export default function LabWorkspacePage() {
               >
                 Run Details
               </p>
-              <p
-                style={{
-                  fontSize: 11,
-                  color: "#6b7a99",
-                  margin: "2px 0",
-                }}
-              >
-                {consoleMeta
-                  ? `Run at ${consoleMeta.time}`
-                  : "Click Run to check details."}
+              <p style={{ fontSize: 11, color: "#6b7a99", margin: "2px 0" }}>
+                {consoleMeta ? `Run at ${consoleMeta.time}` : "Click Run to check details."}
               </p>
-              <p
-                style={{
-                  fontSize: 11,
-                  color: "#6b7a99",
-                  minHeight: 16,
-                }}
-              >
+              <p style={{ fontSize: 11, color: "#6b7a99", minHeight: 16 }}>
                 {consoleMeta ? `Runtime: ${consoleMeta.runtime}` : ""}
               </p>
             </div>
@@ -1602,20 +1367,33 @@ export default function LabWorkspacePage() {
                 style={{
                   flex: 1,
                   padding: "10px 0",
-                  background:
-                    isRunning || !isActiveFileRunnable ? "#1a2540" : "#16a34a",
+                  background: isRunning || !isActiveFileRunnable ? "#1a2540" : "#16a34a",
                   border: "none",
                   borderRadius: 8,
                   color: "#fff",
                   fontSize: 13,
                   fontWeight: 600,
-                  cursor:
-                    isRunning || !isActiveFileRunnable
-                      ? "not-allowed"
-                      : "pointer",
+                  cursor: isRunning || !isActiveFileRunnable ? "not-allowed" : "pointer",
                 }}
               >
                 {isRunning ? "Running…" : "▶  Run"}
+              </button>
+              <button
+                onClick={() => saveDraft()}
+                disabled={saveState === "saving"}
+                style={{
+                  flex: 1,
+                  padding: "10px 0",
+                  background: saveState === "saving" ? "#1a2540" : "transparent",
+                  border: `1px solid ${border}`,
+                  borderRadius: 8,
+                  color: saveState === "error" ? "#f87171" : muted,
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: saveState === "saving" ? "wait" : "pointer",
+                }}
+              >
+                {saveLabel}
               </button>
               <button
                 onClick={() => { setVersionDesc(""); setVersionDescErr(""); setShowVersionModal(true); }}
@@ -1833,11 +1611,11 @@ export default function LabWorkspacePage() {
                 borderRadius: 8, padding: "10px 14px", fontSize: 12,
                 color: "#64748b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
               }}>
-                {`${globalThis.location.origin}/peer-reviews/link/${labData.id}-${Date.now().toString(36)}`}
+                {`${globalThis.location.origin}/peer-reviews/link/${labId}-${Date.now().toString(36)}`}
               </div>
               <button
                 onClick={() => {
-                  const link = `${globalThis.location.origin}/peer-reviews/link/${labData.id}-${Date.now().toString(36)}`;
+                  const link = `${globalThis.location.origin}/peer-reviews/link/${labId}-${Date.now().toString(36)}`;
                   navigator.clipboard.writeText(link).catch(() => {});
                   setShareLinkCopied(true);
                   setTimeout(() => setShareLinkCopied(false), 2000);
@@ -1964,7 +1742,7 @@ export default function LabWorkspacePage() {
                 marginBottom: 8,
               }}
             >
-              Submit Lab {selectedLab.id}?
+              Submit Lab {labId}?
             </h2>
             <p style={{ fontSize: 13, color: muted, marginBottom: 20 }}>
               Current score:{" "}
@@ -2027,7 +1805,28 @@ export default function LabWorkspacePage() {
             boxShadow: "0 4px 24px rgba(0,0,0,0.4)",
           }}
         >
-          ✓ Lab submitted! Redirecting to dashboard…
+          ✓ Lab submitted. Test results updated.
+        </div>
+      )}
+
+      {submitError && (
+        <div
+          style={{
+            position: "fixed",
+            bottom: 32,
+            left: "50%",
+            transform: "translateX(-50%)",
+            background: "#b91c1c",
+            color: "#fff",
+            padding: "12px 28px",
+            borderRadius: 12,
+            fontSize: 14,
+            fontWeight: 600,
+            zIndex: 2000,
+            boxShadow: "0 4px 24px rgba(0,0,0,0.4)",
+          }}
+        >
+          {submitError}
         </div>
       )}
     </div>
