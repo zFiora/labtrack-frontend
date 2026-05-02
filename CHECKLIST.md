@@ -326,7 +326,7 @@ uses it. This prevents 37 pages from each doing it manually.
 
 ### File: `src/pages/instructor/AnalyticsPage.jsx`
 
-- [ ] **4.9 — Load analytics from API**
+- [x] **4.9 — Load analytics from API**
   - Call `api.get("/instructor/labs/:labId/analytics")`
   - Returns: `{ stats, distribution, timeline, topSubmitters }`
   - Remove localStorage computation logic
