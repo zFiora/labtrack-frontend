@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import LoginPage from "../pages/auth/LoginPage.jsx";
+import ResetPasswordPage from "../pages/auth/ResetPasswordPage.jsx";
 import DashboardPage from "../pages/student/DashboardPage.jsx";
 import LabsPage from "../pages/student/LabsPage.jsx";
 import LabWorkspacePage from "../pages/student/LabWorkspacePage.jsx";
@@ -33,6 +34,7 @@ function AppRouter() {
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<LoginPage />} />
+        <Route path="/reset-password/:token" element={<ResetPasswordPage />} />
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/labs" element={<LabsPage />} />
         <Route path="/labs/:labId" element={<LabWorkspacePage />} />

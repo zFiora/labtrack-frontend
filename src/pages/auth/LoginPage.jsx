@@ -11,6 +11,7 @@ function LoginPage() {
   const [activeTab, setActiveTab] = useState("signin");
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [showSignInPassword, setShowSignInPassword] = useState(false);
+  const [isForgotPasswordSending, setIsForgotPasswordSending] = useState(false);
   const [signInData, setSignInData] = useState({
     identifier: "",
     password: "",
@@ -140,7 +141,7 @@ function LoginPage() {
     }
   };
 
-  const handleForgotPassword = (e) => {
+  const handleForgotPassword = async (e) => {
     e?.preventDefault();
 
     const newErrors = {};
@@ -154,17 +155,29 @@ function LoginPage() {
 
     if (Object.keys(newErrors).length > 0) return;
 
-    setSignInData((currentData) => ({
-      ...currentData,
-      identifier: forgotPasswordEmail,
-    }));
-    setForgotPasswordEmail("");
-    setShowForgotPassword(false);
-    setActiveTab("signin");
-    setSuccessMessage(
-      "A reset link has been sent to your email. Please check your inbox.",
-    );
-    navigate("/");
+    setIsForgotPasswordSending(true);
+    try {
+      await api.post("/auth/forgot-password", {
+        email: forgotPasswordEmail.trim().toLowerCase(),
+      });
+      setSignInData((currentData) => ({
+        ...currentData,
+        identifier: forgotPasswordEmail,
+      }));
+      setForgotPasswordEmail("");
+      setShowForgotPassword(false);
+      setActiveTab("signin");
+      setSuccessMessage(
+        "If an active account exists, a reset link has been sent.",
+      );
+      navigate("/");
+    } catch (err) {
+      setErrors({
+        forgotPasswordEmail: err.message || "Could not send reset link. Please try again.",
+      });
+    } finally {
+      setIsForgotPasswordSending(false);
+    }
   };
 
   return (
@@ -227,7 +240,7 @@ function LoginPage() {
                 Enter your KFUPM email and we will send you a reset link.
               </p>
               <input
-                type="text"
+                type="email"
                 placeholder="KFUPM Email"
                 value={forgotPasswordEmail}
                 onChange={(e) => setForgotPasswordEmail(e.target.value)}
@@ -242,9 +255,10 @@ function LoginPage() {
 
             <button
               type="submit"
-              className="w-full rounded-md bg-cyan-500 py-3 font-semibold hover:bg-cyan-600"
+              disabled={isForgotPasswordSending}
+              className="w-full rounded-md bg-cyan-500 py-3 font-semibold hover:bg-cyan-600 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              Send reset link
+              {isForgotPasswordSending ? "Sending..." : "Send reset link"}
             </button>
 
             <button
