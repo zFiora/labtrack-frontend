@@ -558,6 +558,7 @@ export default function LabsManagementPage() {
                   const statusStyle = STATUS_STYLES[lab.status] || STATUS_STYLES.draft;
                   const diffStyle = DIFFICULTY_STYLES[lab.difficulty] || DIFFICULTY_STYLES.medium;
                   const isLast = i === group.labs.length - 1;
+                  const submissionCount = lab.submissionCount ?? lab.submittedCount ?? 0;
 
                   return (
                     <div
@@ -593,6 +594,7 @@ export default function LabsManagementPage() {
                           {lab.title || "Untitled Lab"}
                         </div>
                         <div style={{ color: "#475569", fontSize: 11 }}>
+                          {submissionCount} submission{submissionCount !== 1 ? "s" : ""} ·{" "}
                           {lab.starterFiles?.length > 0
                             ? `${lab.starterFiles.length} starter file${lab.starterFiles.length > 1 ? "s" : ""}`
                             : "No files"}
@@ -667,7 +669,7 @@ export default function LabsManagementPage() {
                             fontWeight: 600,
                           }}
                         >
-                          Submissions
+                          Submissions ({submissionCount})
                         </button>
                         <button
                           onClick={() => navigate(`/instructor/labs/${lab.id}/edit`)}
