@@ -25,6 +25,7 @@ import PlagiarismPage from "../pages/instructor/PlagiarismPage.jsx";
 import InstructorCoursesPage from "../pages/instructor/InstructorCoursesPage.jsx";
 import InstructorStudentsPage from "../pages/instructor/InstructorStudentsPage.jsx";
 import InstructorSettingsPage from "../pages/instructor/InstructorSettingsPage.jsx";
+import SandboxPage from "../pages/shared/SandboxPage.jsx";
 
 import PeerReviewsPage from "../pages/student/PeerReviewsPage.jsx";
 import AssignedReviewPage from "../pages/student/AssignedReviewPage.jsx";
@@ -51,6 +52,7 @@ function AppRouter() {
         />
         <Route path="/grades" element={<GradesPage />} />
         <Route path="/solutions" element={<ReferenceSolutionsPage />} />
+        <Route path="/sandbox" element={<SandboxPage />} />
         <Route path="/admin/users" element={<UserManagementPage />} />
         <Route path="/admin/courses" element={<CourseManagementPage />} />
         <Route path="/admin/departments" element={<DepartmentSettingsPage />} />
@@ -59,6 +61,7 @@ function AppRouter() {
         <Route path="/admin/analytics" element={<AnalyticsDashboardPage />} />
         <Route path="/admin/security" element={<SecurityAccessPage />} />
         <Route path="/admin/backup" element={<BackupRecoveryPage />} />
+        <Route path="/admin/sandbox" element={<SandboxPage />} />
         {/* Instructor routes */}
         <Route path="/instructor/labs" element={<LabsManagementPage />} />
         <Route path="/instructor/labs/create" element={<CreateLabPage />} />
@@ -70,6 +73,7 @@ function AppRouter() {
         <Route path="/instructor/courses" element={<InstructorCoursesPage />} />
         <Route path="/instructor/students" element={<InstructorStudentsPage />} />
         <Route path="/instructor/settings" element={<InstructorSettingsPage />} />
+        <Route path="/instructor/sandbox" element={<SandboxPage />} />
       </Routes>
     </BrowserRouter>
   );

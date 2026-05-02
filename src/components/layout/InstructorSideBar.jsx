@@ -21,6 +21,7 @@ export default function InstructorSideBar() {
     },
     { label: "Students", icon: "👥", path: "/instructor/students" },
     { label: "Analytics", icon: "📊", path: "/instructor/analytics" },
+    { label: "Sandbox", icon: "💻", path: "/instructor/sandbox" },
     { label: "Settings", icon: "⚙️", path: "/instructor/settings" },
   ];
 

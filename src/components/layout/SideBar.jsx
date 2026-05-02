@@ -13,9 +13,9 @@ export default function SideBar({ footer = null, children = null }) {
     { label: "Grades", icon: "📊", path: "/grades" },
     { label: "History", icon: "🕐", path: "/history" },
     { label: "Solutions", icon: "📖", path: "/solutions" },
+    { label: "Sandbox", icon: "💻", path: "/sandbox" },
   ];
 
-  const bg1 = "#080f1e";
   const border = "#1a2540";
   const accent = "#22d3ee";
   const muted = "#8898b3";

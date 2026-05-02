@@ -10,6 +10,7 @@ const NAV_ITEMS = [
   { label: "Analytics", icon: "📈", path: "/admin/analytics" },
   { label: "Security & Access", icon: "🔒", path: "/admin/security" },
   { label: "Backup & Recovery", icon: "💾", path: "/admin/backup" },
+  { label: "Sandbox", icon: "💻", path: "/admin/sandbox" },
 ];
 
 const border = "#1a2540";
