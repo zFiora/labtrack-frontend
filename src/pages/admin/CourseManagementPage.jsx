@@ -31,8 +31,9 @@ function parseMeetingSchedule(value) {
 }
 
 function sectionDays(section) {
-  if (Array.isArray(section?.meetingDays) && section.meetingDays.length > 0) return section.meetingDays.filter(Boolean);
-  if (section?.meetingDays) return parseMeetingSchedule(section.meetingDays).days;
+  const days = Array.isArray(section?.meetingDays) ? section.meetingDays.filter(Boolean) : [];
+  if (days.length > 0) return days;
+  if (typeof section?.meetingDays === "string" && section.meetingDays.trim()) return parseMeetingSchedule(section.meetingDays).days;
   return parseMeetingSchedule(section?.meetingTimes).days;
 }
 
