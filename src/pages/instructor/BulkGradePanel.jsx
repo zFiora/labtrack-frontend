@@ -1,14 +1,24 @@
 import { useState, useEffect } from "react";
+import { api } from "../../utils/api.js";
 
-const TEMPLATES_KEY = "labtrack_feedback_templates";
 const MAX_BULK      = 100;
 
 // ── helpers ───────────────────────────────────────────────────────────────────
-function loadTemplates() {
-  return JSON.parse(localStorage.getItem(TEMPLATES_KEY) || "[]");
+function testScoreFor(sub, labPoints) {
+  const testMax = sub.testResults?.reduce((sum, test) => sum + (test.points || 0), 0) || 0;
+  const earned = sub.testResults?.reduce((sum, test) => sum + (test.earned || 0), 0) || 0;
+  if (testMax > 0) return Math.round((earned / testMax) * labPoints);
+  return sub.score ?? 0;
 }
-function saveTemplates(tpls) {
-  localStorage.setItem(TEMPLATES_KEY, JSON.stringify(tpls));
+
+function scoreForMode(mode, sub, labPoints, adjustPct) {
+  if (mode === "auto") return labPoints;
+  if (mode === "adjust") {
+    const pct = Number(adjustPct) / 100;
+    const raw = (sub.score || 0) + Math.round((sub.score || 0) * pct);
+    return Math.max(0, Math.min(labPoints, raw));
+  }
+  return sub.score ?? testScoreFor(sub, labPoints);
 }
 
 const inputStyle = {
@@ -33,7 +43,7 @@ export default function BulkGradePanel({ lab, submissions, onClose, onApplied, s
   const [appliedCount, setAppliedCount] = useState(0);
 
   // template mode
-  const [templates, setTemplates]         = useState(loadTemplates);
+  const [templates, setTemplates]         = useState([]);
   const [selectedTpl, setSelectedTpl]     = useState(null);
   const [tplEditing, setTplEditing]       = useState(false);
   const [tplDraft, setTplDraft]           = useState({ name: "", text: "" });
@@ -87,7 +97,6 @@ export default function BulkGradePanel({ lab, submissions, onClose, onApplied, s
       ? templates.map((t) => (t.id === selectedTpl.id ? { ...t, ...tplDraft } : t))
       : [...templates, { id: `tpl-${Date.now()}`, ...tplDraft }];
 
-    saveTemplates(updated);
     setTemplates(updated);
     setSelectedTpl(null);
     setTplEditing(false);
@@ -95,13 +104,21 @@ export default function BulkGradePanel({ lab, submissions, onClose, onApplied, s
   };
 
   const deleteTpl = (id) => {
-    const updated = templates.filter((t) => t.id !== id);
-    saveTemplates(updated);
-    setTemplates(updated);
+    setTemplates(templates.filter((t) => t.id !== id));
     if (selectedTpl?.id === id) { setSelectedTpl(null); setFeedbackTemplate(""); }
   };
 
   // ── apply bulk action ──────────────────────────────────────────────────────
+  const buildUpdates = () =>
+    preview.slice(0, MAX_BULK).map((sub) => ({
+      subId: sub.id || sub.submissionId,
+      score: scoreForMode(mode, sub, labPoints, adjustPct),
+      feedback:
+        mode === "adjust"
+          ? `Grade adjusted by ${Number(adjustPct)}%`
+          : feedbackTemplate.trim(),
+    }));
+
   const handleApply = () => {
     if (mode === "adjust") {
       const v = Number(adjustPct);
@@ -111,58 +128,40 @@ export default function BulkGradePanel({ lab, submissions, onClose, onApplied, s
       }
       setAdjustErr("");
     }
+    if (mode === "template" && !feedbackTemplate.trim()) {
+      showToast?.("error", "Choose a feedback template before applying");
+      return;
+    }
     if (!confirmed) { setConfirmed(true); return; }
     runApply();
   };
 
-  const runApply = () => {
+  const runApply = async () => {
     if (applying) return;
+    const updates = buildUpdates();
+    if (updates.length === 0) {
+      showToast?.("error", "No eligible submissions to update");
+      return;
+    }
+
     setApplying(true);
-    setProgress(0);
+    setProgress(20);
 
-    const total = Math.max(preview.length, 1);
-    let done = 0;
+    try {
+      setProgress(55);
+      const result = await api.post("/instructor/submissions/bulk-grade", { updates });
+      setProgress(85);
+      await onApplied?.();
+      finishApply(result?.updated ?? result?.count ?? updates.length);
 
-    const iv = setInterval(() => {
-      done += 1;
-      setProgress(Math.round((done / total) * 100));
-      if (done >= total) {
-        clearInterval(iv);
-        commitApply();
+      if (Array.isArray(result?.failed) && result.failed.length > 0) {
+        showToast?.("error", `${result.failed.length} bulk grade update${result.failed.length !== 1 ? "s" : ""} failed`);
       }
-    }, 60);
-  };
-
-  const commitApply = () => {
-    const { SUBS_KEY } = { SUBS_KEY: "labtrack_submissions" };
-    const all   = JSON.parse(localStorage.getItem(SUBS_KEY) || "{}");
-    const labId = lab?.id;
-    if (!all[labId]) { finishApply(0); return; }
-
-    let count = 0;
-    preview.forEach((sub) => {
-      const s = all[labId][sub.studentId];
-      if (!s) return;
-
-      if (mode === "auto") {
-        s.score    = labPoints;
-        s.status   = "graded";
-        s.gradedAt = new Date().toISOString();
-        if (feedbackTemplate) s.overallFeedback = feedbackTemplate;
-      } else if (mode === "template") {
-        if (feedbackTemplate) s.overallFeedback = feedbackTemplate;
-        if (!s.gradedAt) s.gradedAt = new Date().toISOString();
-      } else if (mode === "adjust") {
-        const pct = Number(adjustPct) / 100;
-        const raw = (s.score || 0) + Math.round((s.score || 0) * pct);
-        s.score   = Math.max(0, Math.min(labPoints, raw));
-        s.gradedAt = new Date().toISOString();
-      }
-      count++;
-    });
-
-    localStorage.setItem(SUBS_KEY, JSON.stringify(all));
-    finishApply(count);
+    } catch (err) {
+      setApplying(false);
+      setProgress(0);
+      showToast?.("error", err.message ?? "Failed to apply bulk grades. Please try again.");
+    }
   };
 
   const finishApply = (count) => {
@@ -170,7 +169,6 @@ export default function BulkGradePanel({ lab, submissions, onClose, onApplied, s
     setApplying(false);
     setAppliedCount(count);
     setDone(true);
-    onApplied?.();
   };
 
   // ── CSV export (all submissions) ──────────────────────────────────────────
@@ -205,6 +203,7 @@ export default function BulkGradePanel({ lab, submissions, onClose, onApplied, s
     { key: "template", icon: "📝", label: "Apply Feedback Template",    desc: "Stamp a reusable comment to multiple submissions" },
     { key: "adjust",   icon: "±",  label: "Adjust Grades by %",        desc: "Scale existing scores up or down by a percentage" },
   ];
+  const canApply = preview.length > 0 && !(mode === "template" && !feedbackTemplate);
 
   return (
     <div style={{
@@ -432,10 +431,10 @@ export default function BulkGradePanel({ lab, submissions, onClose, onApplied, s
                         </div>
                         {preview.slice(0, MAX_BULK).map((s) => {
                           let newScore = "—";
-                          if (mode === "auto") newScore = labPoints;
-                          else if (mode === "adjust" && adjustPct !== "" && s.score !== null) {
-                            const adj = Math.round((s.score || 0) * (Number(adjustPct) / 100));
-                            newScore = Math.max(0, Math.min(labPoints, (s.score || 0) + adj));
+                          if (mode === "auto" || mode === "template") {
+                            newScore = scoreForMode(mode, s, labPoints, adjustPct);
+                          } else if (mode === "adjust" && adjustPct !== "" && s.score !== null) {
+                            newScore = scoreForMode(mode, s, labPoints, adjustPct);
                           }
                           return (
                             <div key={s.id} style={{ display: "grid", gridTemplateColumns: "1fr 100px 100px", padding: "9px 14px", borderBottom: "1px solid #0f1b33", alignItems: "center" }}>
@@ -468,16 +467,16 @@ export default function BulkGradePanel({ lab, submissions, onClose, onApplied, s
                     <button onClick={onClose} style={{ padding: "9px 18px", borderRadius: 9, border: "1px solid #1a2540", background: "transparent", color: "#64748b", fontSize: 13, cursor: "pointer" }}>Cancel</button>
                     <button
                       onClick={handleApply}
-                      disabled={preview.length === 0 || (mode === "template" && !feedbackTemplate)}
+                      disabled={!canApply}
                       style={{
                         padding: "9px 22px", borderRadius: 9, border: "none",
-                        background: preview.length > 0 && !(mode === "template" && !feedbackTemplate)
+                        background: canApply
                           ? confirmed ? "linear-gradient(135deg,#ef4444,#dc2626)" : "linear-gradient(135deg,#06b6d4,#0891b2)"
                           : "#0e2a45",
-                        color: preview.length > 0 ? "#fff" : "#334155",
+                        color: canApply ? "#fff" : "#334155",
                         fontSize: 13, fontWeight: 700,
-                        cursor: preview.length > 0 && !(mode === "template" && !feedbackTemplate) ? "pointer" : "default",
-                        boxShadow: preview.length > 0 ? confirmed ? "0 4px 14px rgba(239,68,68,0.3)" : "0 4px 14px rgba(6,182,212,0.3)" : "none",
+                        cursor: canApply ? "pointer" : "default",
+                        boxShadow: canApply ? confirmed ? "0 4px 14px rgba(239,68,68,0.3)" : "0 4px 14px rgba(6,182,212,0.3)" : "none",
                       }}
                     >
                       {confirmed ? `Confirm — Apply to ${Math.min(preview.length, MAX_BULK)}` : "Apply to All →"}

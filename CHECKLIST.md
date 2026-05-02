@@ -318,7 +318,7 @@ uses it. This prevents 37 pages from each doing it manually.
 
 ### File: `src/pages/instructor/BulkGradePanel.jsx`
 
-- [ ] **4.8 — Wire bulk grade to API**
+- [x] **4.8 — Wire bulk grade to API**
   - Call `api.post("/instructor/submissions/bulk-grade", { updates: [ { subId, score, feedback } ] })`
   - Remove localStorage logic
 
