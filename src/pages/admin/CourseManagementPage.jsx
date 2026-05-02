@@ -1,102 +1,14 @@
 import { useState, useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import AdminLayout from "../../components/layout/AdminLayout";
+import { api } from "../../utils/api.js";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-const COURSES_KEY = "labtrack_courses";
-const USERS_KEY = "users";
 const DEPARTMENTS = ["COE", "ICS", "SWE", "MATH", "PHYS", "CHEM"];
 const SEMESTERS = ["T251", "T252", "T261", "T262"];
 const DAYS_LIST = ["Sun", "Mon", "Tue", "Wed", "Thu"];
 
-// ─── Seed data ────────────────────────────────────────────────────────────────
-const cnow = Date.now();
-const SEED_COURSES = [
-  {
-    id: "c1",
-    courseCode: "ICS 202",
-    name: "Data Structures",
-    department: "ICS",
-    creditHours: 3,
-    semester: "T252",
-    sections: [
-      {
-        id: "s1", sectionNumber: "01",
-        meetingDays: ["Sun", "Tue", "Thu"], startTime: "08:00", endTime: "08:50",
-        capacity: 40, instructorId: "u2", enrolledStudentIds: ["u6", "u10", "u13"],
-      },
-      {
-        id: "s2", sectionNumber: "02",
-        meetingDays: ["Sun", "Tue", "Thu"], startTime: "10:00", endTime: "10:50",
-        capacity: 35, instructorId: "u2", enrolledStudentIds: ["u7", "u14"],
-      },
-    ],
-    createdAt: new Date(cnow - 86400000 * 20).toISOString(),
-  },
-  {
-    id: "c2",
-    courseCode: "COE 301",
-    name: "Computer Organization",
-    department: "COE",
-    creditHours: 3,
-    semester: "T252",
-    sections: [
-      {
-        id: "s3", sectionNumber: "01",
-        meetingDays: ["Sun", "Tue", "Thu"], startTime: "09:00", endTime: "09:50",
-        capacity: 45, instructorId: "u1", enrolledStudentIds: ["u5", "u11"],
-      },
-      {
-        id: "s4", sectionNumber: "02",
-        meetingDays: ["Mon", "Wed"], startTime: "11:00", endTime: "12:15",
-        capacity: 40, instructorId: "u1", enrolledStudentIds: [],
-      },
-    ],
-    createdAt: new Date(cnow - 86400000 * 18).toISOString(),
-  },
-  {
-    id: "c3",
-    courseCode: "SWE 363",
-    name: "Web Engineering",
-    department: "SWE",
-    creditHours: 3,
-    semester: "T252",
-    sections: [
-      {
-        id: "s5", sectionNumber: "03",
-        meetingDays: ["Sun", "Tue", "Thu"], startTime: "13:00", endTime: "13:50",
-        capacity: 35, instructorId: "u3", enrolledStudentIds: ["u7", "u12"],
-      },
-    ],
-    createdAt: new Date(cnow - 86400000 * 15).toISOString(),
-  },
-  {
-    id: "c4",
-    courseCode: "MATH 201",
-    name: "Calculus II",
-    department: "MATH",
-    creditHours: 4,
-    semester: "T252",
-    sections: [
-      {
-        id: "s6", sectionNumber: "05",
-        meetingDays: ["Sun", "Tue", "Thu"], startTime: "11:00", endTime: "11:50",
-        capacity: 50, instructorId: "u4", enrolledStudentIds: ["u9", "u14"],
-      },
-      {
-        id: "s7", sectionNumber: "06",
-        meetingDays: ["Mon", "Wed"], startTime: "13:00", endTime: "14:15",
-        capacity: 50, instructorId: null, enrolledStudentIds: [],
-      },
-    ],
-    createdAt: new Date(cnow - 86400000 * 12).toISOString(),
-  },
-];
-
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-function genId() {
-  return Math.random().toString(36).slice(2, 11);
-}
-
 function formatTime(t) {
   if (!t) return "—";
   const [h, m] = t.split(":").map(Number);
@@ -186,8 +98,11 @@ const EMPTY_SECTION = { sectionNumber: "", meetingDays: [], startTime: "", endTi
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function CourseManagementPage() {
+  const navigate = useNavigate();
   const [courses, setCourses] = useState([]);
   const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [expanded, setExpanded] = useState({});
   const [search, setSearch] = useState("");
   const [deptFilter, setDeptFilter] = useState("all");
@@ -196,9 +111,9 @@ export default function CourseManagementPage() {
   // Modal visibility
   const [showCreateCourse, setShowCreateCourse] = useState(false);
   const [editingCourse, setEditingCourse] = useState(null);
-  const [addSectionFor, setAddSectionFor] = useState(null);   // courseId
-  const [editingSection, setEditingSection] = useState(null); // { courseId, section }
-  const [enrollFor, setEnrollFor] = useState(null);           // { courseId, section }
+  const [addSectionFor, setAddSectionFor] = useState(null);
+  const [editingSection, setEditingSection] = useState(null);
+  const [enrollFor, setEnrollFor] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [removeInstTarget, setRemoveInstTarget] = useState(null);
 
@@ -221,24 +136,22 @@ export default function CourseManagementPage() {
 
   // ── Load ──
   useEffect(() => {
-    let stored = JSON.parse(localStorage.getItem(COURSES_KEY) || "[]");
-    if (stored.length === 0) {
-      stored = SEED_COURSES;
-      localStorage.setItem(COURSES_KEY, JSON.stringify(stored));
-    }
-    setCourses(stored);
-    setUsers(JSON.parse(localStorage.getItem(USERS_KEY) || "[]"));
-  }, []);
+    Promise.all([
+      api.get("/admin/courses"),
+      api.get("/admin/users"),
+    ])
+      .then(([coursesData, usersData]) => {
+        setCourses(Array.isArray(coursesData) ? coursesData : []);
+        setUsers(Array.isArray(usersData) ? usersData : []);
+      })
+      .catch((err) => { if (err.status === 401) navigate("/"); else setError(err.message); })
+      .finally(() => setLoading(false));
+  }, [navigate]);
 
   // ── Utilities ──
   const showToast = (msg, type = "success") => {
     setToast({ msg, type });
     setTimeout(() => setToast(null), 3500);
-  };
-
-  const save = (updated) => {
-    localStorage.setItem(COURSES_KEY, JSON.stringify(updated));
-    setCourses(updated);
   };
 
   const instructors = users.filter((u) => u.role === "instructor");
@@ -249,14 +162,14 @@ export default function CourseManagementPage() {
   const filtered = courses.filter((c) => {
     const q = search.toLowerCase();
     return (
-      (!q || c.courseCode.toLowerCase().includes(q) || c.name.toLowerCase().includes(q)) &&
+      (!q || (c.courseCode || "").toLowerCase().includes(q) || (c.name || "").toLowerCase().includes(q)) &&
       (deptFilter === "all" || c.department === deptFilter) &&
       (semFilter === "all" || c.semester === semFilter)
     );
   });
 
-  const totalSections = courses.reduce((n, c) => n + c.sections.length, 0);
-  const totalEnrolled = courses.reduce((n, c) => n + c.sections.reduce((s, sec) => s + sec.enrolledStudentIds.length, 0), 0);
+  const totalSections = courses.reduce((n, c) => n + (c.sections || []).length, 0);
+  const totalEnrolled = courses.reduce((n, c) => n + (c.sections || []).reduce((s, sec) => s + (sec.enrolledStudentIds || []).length, 0), 0);
 
   // ── Course validation & CRUD ──
   const validateCourse = (data, editId = null) => {
@@ -275,48 +188,58 @@ export default function CourseManagementPage() {
     return errs;
   };
 
-  const handleCreateCourse = () => {
+  const handleCreateCourse = async () => {
     const errs = validateCourse(courseForm);
     if (Object.keys(errs).length) { setCourseErrors(errs); return; }
-    const nc = {
-      id: "c" + genId(),
-      courseCode: courseForm.courseCode.trim().toUpperCase(),
-      name: courseForm.name.trim(),
-      department: courseForm.department,
-      creditHours: Number(courseForm.creditHours),
-      semester: courseForm.semester,
-      sections: [],
-      createdAt: new Date().toISOString(),
-    };
-    save([...courses, nc]);
-    setShowCreateCourse(false);
-    setCourseForm(EMPTY_COURSE);
-    setCourseErrors({});
-    showToast(`Course created successfully — ${nc.courseCode}`);
+    try {
+      const nc = await api.post("/admin/courses", {
+        courseCode: courseForm.courseCode.trim().toUpperCase(),
+        name: courseForm.name.trim(),
+        department: courseForm.department,
+        creditHours: Number(courseForm.creditHours),
+        semester: courseForm.semester,
+        sections: [],
+      });
+      setCourses((prev) => [...prev, nc]);
+      setShowCreateCourse(false);
+      setCourseForm(EMPTY_COURSE);
+      setCourseErrors({});
+      showToast(`Course created successfully — ${nc.courseCode}`);
+    } catch (err) {
+      setCourseErrors({ _general: err.message });
+    }
   };
 
-  const handleEditCourse = () => {
+  const handleEditCourse = async () => {
     const errs = validateCourse(editingCourse, editingCourse.id);
     if (Object.keys(errs).length) { setCourseErrors(errs); return; }
-    save(courses.map((c) =>
-      c.id !== editingCourse.id ? c : {
-        ...c,
+    try {
+      const updated = await api.patch(`/admin/courses/${editingCourse.id}`, {
         courseCode: editingCourse.courseCode.trim().toUpperCase(),
         name: editingCourse.name.trim(),
         department: editingCourse.department,
         creditHours: Number(editingCourse.creditHours),
         semester: editingCourse.semester,
-      },
-    ));
-    setEditingCourse(null);
-    setCourseErrors({});
-    showToast("Course updated successfully");
+      });
+      setCourses((prev) => prev.map((c) => c.id !== editingCourse.id ? c : { ...c, ...updated }));
+      setEditingCourse(null);
+      setCourseErrors({});
+      showToast("Course updated successfully");
+    } catch (err) {
+      setCourseErrors({ _general: err.message });
+    }
   };
 
-  const handleDeleteCourse = () => {
-    save(courses.filter((c) => c.id !== deleteTarget.courseId));
-    setDeleteTarget(null);
-    showToast("Course deleted");
+  const handleDeleteCourse = async () => {
+    try {
+      await api.delete(`/admin/courses/${deleteTarget.courseId}`);
+      setCourses((prev) => prev.filter((c) => c.id !== deleteTarget.courseId));
+      setDeleteTarget(null);
+      showToast("Course deleted");
+    } catch (err) {
+      showToast(err.message, "error");
+      setDeleteTarget(null);
+    }
   };
 
   // ── Section validation & CRUD ──
@@ -330,7 +253,7 @@ export default function CourseManagementPage() {
         errs.sectionNumber = "Section number already exists in this course";
       }
     }
-    if (data.meetingDays.length === 0) errs.meetingDays = "Select at least one day";
+    if ((data.meetingDays || []).length === 0) errs.meetingDays = "Select at least one day";
     if (!data.startTime) errs.startTime = "Start time is required";
     if (!data.endTime) errs.endTime = "End time is required";
     if (data.startTime && data.endTime && data.startTime >= data.endTime) {
@@ -350,65 +273,86 @@ export default function CourseManagementPage() {
     return errs;
   };
 
-  const handleAddSection = () => {
+  const handleAddSection = async () => {
     const errs = validateSection(sectionForm, addSectionFor);
     if (Object.keys(errs).length) { setSectionErrors(errs); return; }
-    const ns = {
-      id: "s" + genId(),
-      sectionNumber: sectionForm.sectionNumber.trim(),
-      meetingDays: sectionForm.meetingDays,
-      startTime: sectionForm.startTime,
-      endTime: sectionForm.endTime,
-      capacity: Number(sectionForm.capacity),
-      instructorId: sectionForm.instructorId || null,
-      enrolledStudentIds: [],
-    };
-    save(courses.map((c) => c.id === addSectionFor ? { ...c, sections: [...c.sections, ns] } : c));
-    closeSectionModal();
-    showToast(ns.instructorId ? "Section created with instructor assigned" : "Section created successfully");
-  };
-
-  const handleEditSection = () => {
-    const { courseId, section } = editingSection;
-    const errs = validateSection(sectionForm, courseId, section.id);
-    if (Object.keys(errs).length) { setSectionErrors(errs); return; }
-    save(courses.map((c) =>
-      c.id !== courseId ? c : {
-        ...c,
-        sections: c.sections.map((s) =>
-          s.id !== section.id ? s : {
-            ...s,
+    try {
+      const updated = await api.patch(`/admin/courses/${addSectionFor}`, {
+        sections: [
+          ...(courses.find((c) => c.id === addSectionFor)?.sections || []),
+          {
             sectionNumber: sectionForm.sectionNumber.trim(),
             meetingDays: sectionForm.meetingDays,
             startTime: sectionForm.startTime,
             endTime: sectionForm.endTime,
             capacity: Number(sectionForm.capacity),
             instructorId: sectionForm.instructorId || null,
+            enrolledStudentIds: [],
           },
-        ),
-      },
-    ));
-    closeSectionModal();
-    showToast("Section updated successfully");
+        ],
+      });
+      setCourses((prev) => prev.map((c) => c.id === addSectionFor ? { ...c, ...updated } : c));
+      closeSectionModal();
+      showToast(sectionForm.instructorId ? "Section created with instructor assigned" : "Section created successfully");
+    } catch (err) {
+      setSectionErrors({ _general: err.message });
+    }
   };
 
-  const handleDeleteSection = () => {
+  const handleEditSection = async () => {
+    const { courseId, section } = editingSection;
+    const errs = validateSection(sectionForm, courseId, section.id);
+    if (Object.keys(errs).length) { setSectionErrors(errs); return; }
+    const course = courses.find((c) => c.id === courseId);
+    const newSections = (course?.sections || []).map((s) =>
+      s.id !== section.id ? s : {
+        ...s,
+        sectionNumber: sectionForm.sectionNumber.trim(),
+        meetingDays: sectionForm.meetingDays,
+        startTime: sectionForm.startTime,
+        endTime: sectionForm.endTime,
+        capacity: Number(sectionForm.capacity),
+        instructorId: sectionForm.instructorId || null,
+      },
+    );
+    try {
+      const updated = await api.patch(`/admin/courses/${courseId}`, { sections: newSections });
+      setCourses((prev) => prev.map((c) => c.id !== courseId ? c : { ...c, ...updated }));
+      closeSectionModal();
+      showToast("Section updated successfully");
+    } catch (err) {
+      setSectionErrors({ _general: err.message });
+    }
+  };
+
+  const handleDeleteSection = async () => {
     const { courseId, sectionId } = deleteTarget;
-    save(courses.map((c) => c.id !== courseId ? c : { ...c, sections: c.sections.filter((s) => s.id !== sectionId) }));
-    setDeleteTarget(null);
-    showToast("Section deleted");
+    const course = courses.find((c) => c.id === courseId);
+    const newSections = (course?.sections || []).filter((s) => s.id !== sectionId);
+    try {
+      const updated = await api.patch(`/admin/courses/${courseId}`, { sections: newSections });
+      setCourses((prev) => prev.map((c) => c.id !== courseId ? c : { ...c, ...updated }));
+      setDeleteTarget(null);
+      showToast("Section deleted");
+    } catch (err) {
+      showToast(err.message, "error");
+      setDeleteTarget(null);
+    }
   };
 
-  const handleRemoveInstructor = () => {
+  const handleRemoveInstructor = async () => {
     const { courseId, sectionId } = removeInstTarget;
-    save(courses.map((c) =>
-      c.id !== courseId ? c : {
-        ...c,
-        sections: c.sections.map((s) => s.id !== sectionId ? s : { ...s, instructorId: null }),
-      },
-    ));
-    setRemoveInstTarget(null);
-    showToast("Instructor removed from section");
+    const course = courses.find((c) => c.id === courseId);
+    const newSections = (course?.sections || []).map((s) => s.id !== sectionId ? s : { ...s, instructorId: null });
+    try {
+      const updated = await api.patch(`/admin/courses/${courseId}`, { sections: newSections });
+      setCourses((prev) => prev.map((c) => c.id !== courseId ? c : { ...c, ...updated }));
+      setRemoveInstTarget(null);
+      showToast("Instructor removed from section");
+    } catch (err) {
+      showToast(err.message, "error");
+      setRemoveInstTarget(null);
+    }
   };
 
   // ── Enrollment ──
@@ -417,14 +361,14 @@ export default function CourseManagementPage() {
     const section = course?.sections.find((s) => s.id === sectionId);
     if (!section) return;
 
-    const allEnrolledInCourse = new Set(course.sections.flatMap((s) => s.enrolledStudentIds));
+    const allEnrolledInCourse = new Set(course.sections.flatMap((s) => s.enrolledStudentIds || []));
     const matched = [], notFound = [], alreadyEnrolled = [];
 
     rawIds.forEach((sid) => {
       const user = students.find((u) => u.studentId === sid || u.id === sid);
       if (!user) {
         notFound.push(sid);
-      } else if (section.enrolledStudentIds.includes(user.id)) {
+      } else if ((section.enrolledStudentIds || []).includes(user.id)) {
         alreadyEnrolled.push({ ...user, note: "already in this section" });
       } else if (allEnrolledInCourse.has(user.id)) {
         alreadyEnrolled.push({ ...user, note: "enrolled in another section of this course" });
@@ -455,22 +399,25 @@ export default function CourseManagementPage() {
     buildPreview(enrollFor.courseId, enrollFor.section.id, ids);
   };
 
-  const handleConfirmEnroll = () => {
+  const handleConfirmEnroll = async () => {
     const newIds = enrollPreview.matched.map((u) => u.id);
     const { courseId, section } = enrollFor;
-    save(courses.map((c) =>
-      c.id !== courseId ? c : {
-        ...c,
-        sections: c.sections.map((s) =>
-          s.id !== section.id ? s : {
-            ...s,
-            enrolledStudentIds: [...new Set([...s.enrolledStudentIds, ...newIds])],
-          },
-        ),
+    const course = courses.find((c) => c.id === courseId);
+    const newSections = (course?.sections || []).map((s) =>
+      s.id !== section.id ? s : {
+        ...s,
+        enrolledStudentIds: [...new Set([...(s.enrolledStudentIds || []), ...newIds])],
       },
-    ));
-    showToast(`${newIds.length} students enrolled in section`);
-    closeEnroll();
+    );
+    try {
+      const updated = await api.patch(`/admin/courses/${courseId}`, { sections: newSections });
+      setCourses((prev) => prev.map((c) => c.id !== courseId ? c : { ...c, ...updated }));
+      showToast(`${newIds.length} students enrolled in section`);
+      closeEnroll();
+    } catch (err) {
+      showToast(err.message, "error");
+      closeEnroll();
+    }
   };
 
   const closeEnroll = () => {
@@ -510,9 +457,9 @@ export default function CourseManagementPage() {
   };
 
   const toggleDay = (day, form, setForm) => {
-    const days = form.meetingDays.includes(day)
+    const days = (form.meetingDays || []).includes(day)
       ? form.meetingDays.filter((d) => d !== day)
-      : [...form.meetingDays, day];
+      : [...(form.meetingDays || []), day];
     setForm({ ...form, meetingDays: days });
   };
 
@@ -521,6 +468,14 @@ export default function CourseManagementPage() {
   );
 
   // ─────────────────────────────────────────────────────────────────────────────
+  if (loading) {
+    return (
+      <AdminLayout>
+        <div style={{ padding: "28px 32px", color: "#94a3b8", fontSize: 14 }}>Loading...</div>
+      </AdminLayout>
+    );
+  }
+
   return (
     <AdminLayout>
       <div style={{ padding: "28px 32px", minHeight: "100%" }}>
@@ -540,6 +495,13 @@ export default function CourseManagementPage() {
             + Create New Course
           </button>
         </div>
+
+        {/* ── Error ── */}
+        {error && (
+          <div style={{ padding: "12px 16px", background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 10, color: "#f87171", fontSize: 13, marginBottom: 20 }}>
+            {error}
+          </div>
+        )}
 
         {/* ── Stats ── */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14, marginBottom: 28 }}>
@@ -604,7 +566,7 @@ export default function CourseManagementPage() {
             {filtered.map((course) => {
               const isExp = !!expanded[course.id];
               const deptColor = DEPT_COLORS[course.department] || "#94a3b8";
-              const courseEnrolled = course.sections.reduce((n, s) => n + s.enrolledStudentIds.length, 0);
+              const courseEnrolled = (course.sections || []).reduce((n, s) => n + (s.enrolledStudentIds || []).length, 0);
 
               return (
                 <div key={course.id} style={{ background: "#0a1628", border: "1px solid #1a2540", borderRadius: 14, overflow: "hidden" }}>
@@ -631,7 +593,7 @@ export default function CourseManagementPage() {
                         {course.semester}
                       </span>
                       <span style={{ fontSize: 12, color: "#475569", flexShrink: 0 }}>
-                        {course.sections.length} sec · {courseEnrolled} std
+                        {(course.sections || []).length} sec · {courseEnrolled} std
                       </span>
                     </button>
 
@@ -650,7 +612,7 @@ export default function CourseManagementPage() {
                         Edit
                       </button>
                       <button
-                        onClick={() => setDeleteTarget({ type: "course", courseId: course.id, label: `${course.courseCode} — ${course.name}`, sectionCount: course.sections.length, enrolledCount: courseEnrolled })}
+                        onClick={() => setDeleteTarget({ type: "course", courseId: course.id, label: `${course.courseCode} — ${course.name}`, sectionCount: (course.sections || []).length, enrolledCount: courseEnrolled })}
                         style={{ padding: "5px 8px", borderRadius: 7, border: "1px solid rgba(239,68,68,0.2)", background: "transparent", color: "#f87171", fontSize: 13, cursor: "pointer" }}
                       >
                         🗑
@@ -661,7 +623,7 @@ export default function CourseManagementPage() {
                   {/* Sections ── expanded */}
                   {isExp && (
                     <div style={{ borderTop: "1px solid #1a2540" }}>
-                      {course.sections.length === 0 ? (
+                      {(course.sections || []).length === 0 ? (
                         <div style={{ padding: "24px", textAlign: "center" }}>
                           <p style={{ color: "#475569", fontSize: 13, margin: "0 0 12px" }}>No sections yet</p>
                           <button
@@ -678,9 +640,9 @@ export default function CourseManagementPage() {
                             <span>Section</span><span>Days</span><span>Time</span><span>Cap</span><span>Enrolled</span><span>Instructor</span><span>Actions</span>
                           </div>
 
-                          {course.sections.map((sec, si) => {
+                          {(course.sections || []).map((sec, si) => {
                             const inst = getUser(sec.instructorId);
-                            const enrolled = sec.enrolledStudentIds.length;
+                            const enrolled = (sec.enrolledStudentIds || []).length;
                             const pct = Math.round((enrolled / sec.capacity) * 100);
                             const isLast = si === course.sections.length - 1;
 
@@ -690,7 +652,7 @@ export default function CourseManagementPage() {
                                 style={{ display: "grid", gridTemplateColumns: "70px 130px 180px 80px 110px 1fr 220px", padding: "12px 20px 12px 56px", borderBottom: isLast ? "none" : "1px solid #0f1b33", alignItems: "center" }}
                               >
                                 <span style={{ fontSize: 13, fontWeight: 700, color: "#e2e8f0" }}>§ {sec.sectionNumber}</span>
-                                <span style={{ fontSize: 12, color: "#94a3b8" }}>{sec.meetingDays.join(" / ")}</span>
+                                <span style={{ fontSize: 12, color: "#94a3b8" }}>{(sec.meetingDays || []).join(" / ")}</span>
                                 <span style={{ fontSize: 12, color: "#64748b" }}>{formatTime(sec.startTime)} – {formatTime(sec.endTime)}</span>
                                 <span style={{ fontSize: 12, color: "#64748b" }}>{sec.capacity}</span>
 
@@ -787,6 +749,11 @@ export default function CourseManagementPage() {
             title={isEdit ? "Edit Course" : "Create New Course"}
             onClose={() => { setShowCreateCourse(false); setEditingCourse(null); setCourseErrors({}); }}
           >
+            {courseErrors._general && (
+              <div style={{ padding: "10px 14px", background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 8, color: "#f87171", fontSize: 13, marginBottom: 16 }}>
+                {courseErrors._general}
+              </div>
+            )}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 16px" }}>
               <Field label="Course Code *" error={courseErrors.courseCode}>
                 <input style={inputStyle} placeholder="e.g. ICS 202" value={form.courseCode}
@@ -834,6 +801,11 @@ export default function CourseManagementPage() {
           onClose={closeSectionModal}
           width={580}
         >
+          {sectionErrors._general && (
+            <div style={{ padding: "10px 14px", background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 8, color: "#f87171", fontSize: 13, marginBottom: 16 }}>
+              {sectionErrors._general}
+            </div>
+          )}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 16px" }}>
             <Field label="Section Number *" error={sectionErrors.sectionNumber}>
               <input style={inputStyle} placeholder="e.g. 01" value={sectionForm.sectionNumber}
@@ -848,7 +820,7 @@ export default function CourseManagementPage() {
           <Field label="Meeting Days *" error={sectionErrors.meetingDays}>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
               {DAYS_LIST.map((day) => {
-                const active = sectionForm.meetingDays.includes(day);
+                const active = (sectionForm.meetingDays || []).includes(day);
                 return (
                   <button
                     key={day} type="button"
@@ -1003,7 +975,7 @@ export default function CourseManagementPage() {
               // Input screen
               <div>
                 <p style={{ color: "#64748b", fontSize: 13, margin: "0 0 16px" }}>
-                  Current enrollment: <strong style={{ color: "#e2e8f0" }}>{sec.enrolledStudentIds.length}/{sec.capacity}</strong>
+                  Current enrollment: <strong style={{ color: "#e2e8f0" }}>{(sec.enrolledStudentIds || []).length}/{sec.capacity}</strong>
                 </p>
 
                 {/* Tabs */}
