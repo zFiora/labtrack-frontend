@@ -80,6 +80,7 @@ const DEPT_COLORS = {
   COE: "#f97316", ICS: "#22d3ee", SWE: "#a78bfa",
   MATH: "#34d399", PHYS: "#fb7185", CHEM: "#fbbf24",
 };
+const USER_GRID_COLUMNS = "minmax(280px, 1fr) 110px 120px 80px 116px 130px 190px";
 
 // ─── Empty form state ─────────────────────────────────────────────────────────
 const EMPTY_FORM = { fullName: "", email: "", studentId: "", role: "student", department: "ICS" };
@@ -94,8 +95,18 @@ function Badge({ value, styleMap }) {
   return (
     <span
       style={{
-        display: "inline-block", padding: "3px 10px", borderRadius: 20,
-        fontSize: 11, fontWeight: 700,
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        width: "fit-content",
+        minWidth: 76,
+        maxWidth: "100%",
+        height: 26,
+        padding: "0 11px",
+        borderRadius: 999,
+        fontSize: 11,
+        fontWeight: 700,
+        lineHeight: 1,
         background: s.bg, color: s.text, border: `1px solid ${s.border}`,
         textTransform: "capitalize", whiteSpace: "nowrap",
       }}
@@ -520,7 +531,7 @@ export default function UserManagementPage() {
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "1fr 100px 90px 72px 90px 130px 180px",
+                gridTemplateColumns: USER_GRID_COLUMNS,
                 padding: "12px 20px",
                 borderBottom: "1px solid #1a2540",
                 fontSize: 11, fontWeight: 700, color: "#475569",
@@ -544,7 +555,7 @@ export default function UserManagementPage() {
                   key={user.id}
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "1fr 100px 90px 72px 90px 130px 180px",
+                    gridTemplateColumns: USER_GRID_COLUMNS,
                     padding: "13px 20px",
                     borderBottom: isLast ? "none" : "1px solid #0f1b33",
                     alignItems: "center",
