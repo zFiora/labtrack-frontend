@@ -88,18 +88,48 @@ function normalizeTimeline(source) {
   return [];
 }
 
+function idValue(value) {
+  if (!value) return "";
+  if (typeof value === "object") {
+    return value._id || value.id || value.studentId || value.email || "";
+  }
+  return value;
+}
+
+function compareSubmitters(a, b) {
+  const scoreDiff = asNumber(b.score, -1) - asNumber(a.score, -1);
+  if (scoreDiff !== 0) return scoreDiff;
+  return new Date(b.submittedAt || 0) - new Date(a.submittedAt || 0);
+}
+
+function dedupeSubmitters(submitters) {
+  const bestByStudent = new Map();
+
+  submitters.forEach((student, index) => {
+    const key = String(student.id || student.studentId || student.email || student.name || `submitter-${index}`).toLowerCase();
+    const current = bestByStudent.get(key);
+    if (!current || compareSubmitters(current, student) > 0) {
+      bestByStudent.set(key, student);
+    }
+  });
+
+  return Array.from(bestByStudent.values()).sort(compareSubmitters);
+}
+
 function normalizeSubmitters(source) {
   if (!Array.isArray(source)) return [];
-  return source.map((entry, index) => {
+  return dedupeSubmitters(source.map((entry, index) => {
     const student = entry.student || entry.studentDetails || {};
+    const id = idValue(entry.id || entry.studentId || student.id || student._id || entry._id);
     return {
-      id: entry.id || entry.studentId || student.id || `submitter-${index}`,
+      id: id || entry.studentEmail || student.email || entry.email || `submitter-${index}`,
+      studentId: id,
       name: entry.studentName || student.fullName || student.name || entry.name || "Student",
       email: entry.studentEmail || student.email || entry.email || "",
       score: entry.score ?? entry.averageScore ?? null,
       submittedAt: entry.submittedAt || entry.lastSubmittedAt || null,
     };
-  });
+  }));
 }
 
 function normalizeTestCases(source) {
@@ -369,12 +399,12 @@ export default function AnalyticsPage() {
   }, [rows]);
 
   const topSubmitters = useMemo(() => {
-    return rows
+    return dedupeSubmitters(rows
       .flatMap((row) => row.topSubmitters.map((student) => ({
         ...student,
         labTitle: row.lab.title,
       })))
-      .sort((a, b) => asNumber(b.score, -1) - asNumber(a.score, -1))
+    )
       .slice(0, 6);
   }, [rows]);
 
