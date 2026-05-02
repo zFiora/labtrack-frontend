@@ -298,13 +298,9 @@ export default function GradingPage() {
 
     try {
       const response = await api.patch(`/instructor/submissions/${subId}/grade`, payload);
-      const fallback = {
-        ...sub,
-        ...payload,
-        maxScore: labPoints,
-        gradedAt: new Date().toISOString(),
-      };
-      const savedSub = normalizeSubmission(getSubmissionPayload(response) || fallback, lab);
+      const savedPayload = getSubmissionPayload(response);
+      if (!savedPayload) throw new Error("Backend did not return the saved submission.");
+      const savedSub = normalizeSubmission(savedPayload, lab);
       const remaining = allSubs.filter(
         (s) => s.status === "submitted" && s.id !== subId,
       );

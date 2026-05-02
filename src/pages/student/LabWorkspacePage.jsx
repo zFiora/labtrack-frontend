@@ -85,7 +85,7 @@ function tokenize(text) {
 }
 
 function buildInitialFileContents(files, starterCode) {
-  const fallbackTextByType = {
+  const defaultTextByType = {
     py: "# Add your Python notes or helper code here\n",
     md: "# Notes\n\nWrite your lab notes for this file here.\n",
   };
@@ -99,12 +99,12 @@ function buildInitialFileContents(files, starterCode) {
 
     const ext = lowerName.split(".").pop();
     if (ext === "py") {
-      acc[fileName] = `# ${fileName}\n\n${fallbackTextByType.py}`;
+      acc[fileName] = `# ${fileName}\n\n${defaultTextByType.py}`;
       return acc;
     }
 
     if (ext === "md") {
-      acc[fileName] = `# ${fileName}\n\n${fallbackTextByType.md}`;
+      acc[fileName] = `# ${fileName}\n\n${defaultTextByType.md}`;
       return acc;
     }
 
