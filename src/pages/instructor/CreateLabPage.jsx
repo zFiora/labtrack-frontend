@@ -7,6 +7,7 @@ import { api } from "../../utils/api.js";
 
 const LANGUAGES = ["Python", "C++", "C", "Java", "JavaScript", "Go", "Rust"];
 const AUTO_SAVE_INTERVAL_MS = 2 * 60 * 1000; // 2 minutes
+const TEXT_FILE_RE = /\.(c|cc|cpp|cxx|css|csv|go|h|hpp|html|java|js|json|jsx|md|py|rs|sql|ts|tsx|txt|xml|ya?ml)$/i;
 
 const inputStyle = {
   width: "100%",
@@ -77,6 +78,31 @@ function getStarterCode(starterFiles) {
   return starterFiles
     .map((file) => file.content || file.code || "")
     .find((content) => content.trim()) ?? "";
+}
+
+function normalizeLabFiles(files) {
+  return files
+    .map((file) => ({
+      name: file.name || file.fileName || file.filename || "",
+      size: Number(file.size) || 0,
+      fileType: file.fileType || file.type || "",
+      content: typeof file.content === "string" ? file.content : "",
+    }))
+    .filter((file) => file.name);
+}
+
+function getLabFileNames(starterFiles, supportingFiles) {
+  return [...new Set([...starterFiles, ...supportingFiles].map((file) => file.name).filter(Boolean))];
+}
+
+async function readBrowserFile(file) {
+  const isTextFile = file.type?.startsWith("text/") || TEXT_FILE_RE.test(file.name);
+  return {
+    name: file.name,
+    size: file.size,
+    fileType: file.type || "",
+    content: isTextFile ? await file.text().catch(() => "") : "",
+  };
 }
 
 function toIsoString(value) {
@@ -210,7 +236,10 @@ function normalizeSolutionsForEditor(solutions) {
   });
 }
 
-function buildLabPayload(formData, starter, _supporting, tcs, sols) {
+function buildLabPayload(formData, starter, supporting, tcs, sols) {
+  const starterFiles = normalizeLabFiles(starter);
+  const supportingFiles = normalizeLabFiles(supporting);
+
   return {
     courseId: formData.courseId.trim(),
     labNumber: Number.parseInt(formData.labNumber, 10) || undefined,
@@ -221,6 +250,9 @@ function buildLabPayload(formData, starter, _supporting, tcs, sols) {
     difficulty: formData.difficulty,
     languages: formData.languages,
     starterCode: getStarterCode(starter),
+    files: getLabFileNames(starterFiles, supportingFiles),
+    starterFiles,
+    supportingFiles,
     testCases: normalizeTestCasesForApi(tcs),
     solutions: normalizeSolutionsForApi(sols, formData.dueDate),
   };
@@ -529,13 +561,11 @@ export default function CreateLabPage() {
     });
   };
 
-  const handleFiles = (fileList, type) => {
+  const handleFiles = async (fileList, type) => {
     const incoming = Array.from(fileList);
-    const infoList = incoming.map((f) => ({ name: f.name, size: f.size, fileType: f.type }));
+    const incomingMeta = incoming.map((f) => ({ name: f.name, size: f.size, fileType: f.type }));
 
-    const currentStarter = type === "starter" ? [] : starterFiles;
-    const currentSupporting = type === "supporting" ? [] : supportingFiles;
-    const combined = [...starterFiles, ...supportingFiles, ...infoList];
+    const combined = [...starterFiles, ...supportingFiles, ...incomingMeta];
     const totalBytes = combined.reduce((s, f) => s + f.size, 0);
 
     if (totalBytes > 50 * 1024 * 1024) {
@@ -544,6 +574,7 @@ export default function CreateLabPage() {
     }
 
     trackUploadProgress(incoming, type);
+    const infoList = await Promise.all(incoming.map(readBrowserFile));
 
     if (type === "starter") {
       setStarterFiles((prev) => {

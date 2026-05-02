@@ -39,6 +39,18 @@ function displayLanguages(lab) {
   return labLanguages(lab).join(", ");
 }
 
+function defaultFileForLab(lab) {
+  const language = normalizeLanguage(labLanguages(lab)[0]);
+  if (language === "javascript") return "solution.js";
+  if (language === "typescript") return "solution.ts";
+  if (language === "java") return "Main.java";
+  if (language === "c") return "solution.c";
+  if (language === "cpp") return "solution.cpp";
+  if (language === "go") return "solution.go";
+  if (language === "rust") return "solution.rs";
+  return "solution.py";
+}
+
 function languageForFile(lab, fileName) {
   const ext = fileName ? getFileExtension(fileName) : "";
   const languages = labLanguages(lab);
@@ -47,6 +59,22 @@ function languageForFile(lab, fileName) {
     return RUNNABLE_EXTENSIONS_BY_LANGUAGE[normalized]?.includes(ext);
   });
   return normalizeLanguage(byExtension || languages[0]);
+}
+
+function isRunnableForLab(lab, fileName) {
+  const ext = fileName ? getFileExtension(fileName) : "";
+  return labLanguages(lab).some((language) => {
+    const normalized = normalizeLanguage(language);
+    return RUNNABLE_EXTENSIONS_BY_LANGUAGE[normalized]?.includes(ext);
+  });
+}
+
+function pickStarterFile(files, lab) {
+  return (
+    files.find((file) => file.toLowerCase().includes("solution") && isRunnableForLab(lab, file)) ||
+    files.find((file) => isRunnableForLab(lab, file)) ||
+    files[0]
+  );
 }
 
 function getFileExtension(fileName) {
@@ -84,27 +112,29 @@ function tokenize(text) {
   });
 }
 
-function buildInitialFileContents(files, starterCode) {
+function buildInitialFileContents(files, starterCode, lab) {
   const defaultTextByType = {
     py: "# Add your Python notes or helper code here\n",
+    js: "// Start writing here.\n",
+    java: "// Start writing here.\n",
+    c: "/* Start writing here. */\n",
+    cpp: "// Start writing here.\n",
+    go: "// Start writing here.\n",
+    rs: "// Start writing here.\n",
     md: "# Notes\n\nWrite your lab notes for this file here.\n",
   };
+  const starterFile = pickStarterFile(files, lab);
 
   return files.reduce((acc, fileName) => {
     const lowerName = fileName.toLowerCase();
-    if (lowerName.includes("solution") && lowerName.endsWith(".py")) {
+    if (fileName === starterFile && starterCode) {
       acc[fileName] = starterCode;
       return acc;
     }
 
     const ext = lowerName.split(".").pop();
-    if (ext === "py") {
-      acc[fileName] = `# ${fileName}\n\n${defaultTextByType.py}`;
-      return acc;
-    }
-
-    if (ext === "md") {
-      acc[fileName] = `# ${fileName}\n\n${defaultTextByType.md}`;
+    if (defaultTextByType[ext]) {
+      acc[fileName] = `${defaultTextByType[ext]}`;
       return acc;
     }
 
@@ -113,14 +143,28 @@ function buildInitialFileContents(files, starterCode) {
   }, {});
 }
 
-function getFileName(file) {
-  if (typeof file === "string") return file;
-  return file?.name || file?.fileName || file?.filename || null;
+function normalizeLabFileEntry(file) {
+  if (typeof file === "string") return { name: file, content: "" };
+  const name = file?.name || file?.fileName || file?.filename;
+  return {
+    name,
+    content: typeof file?.content === "string" ? file.content : "",
+  };
 }
 
-function normalizeFileList(files) {
-  if (!Array.isArray(files)) return [];
-  return files.map(getFileName).filter(Boolean);
+function getLabFileEntries(lab) {
+  const byName = new Map();
+  const add = (file) => {
+    const entry = normalizeLabFileEntry(file);
+    if (!entry.name) return;
+    const existing = byName.get(entry.name);
+    if (!existing || (!existing.content && entry.content)) byName.set(entry.name, entry);
+  };
+
+  (lab?.starterFiles || []).forEach(add);
+  (lab?.supportingFiles || []).forEach(add);
+  (lab?.files || []).forEach(add);
+  return Array.from(byName.values());
 }
 
 function findProgressForLab(progressData, labId) {
@@ -242,7 +286,14 @@ export default function LabWorkspacePage() {
         const progress = findProgressForLab(progressData, labId);
         setLab(labData);
 
-        const labFileNames = normalizeFileList(labData.files);
+        const labFileEntries = getLabFileEntries(labData);
+        const labFileNames = labFileEntries.map((file) => file.name);
+        const labSeedContents = labFileEntries.reduce((acc, file) => {
+          if (typeof file.content === "string" && file.content.length > 0) {
+            acc[file.name] = file.content;
+          }
+          return acc;
+        }, {});
         const submissionFiles =
           submission?.files && typeof submission.files === "object"
             ? Object.keys(submission.files)
@@ -252,17 +303,16 @@ export default function LabWorkspacePage() {
             ? Object.keys(progress.files)
             : [];
         const labFiles = Array.from(new Set([
-          ...(labFileNames.length ? labFileNames : ["solution.py"]),
+          ...(labFileNames.length ? labFileNames : [defaultFileForLab(labData)]),
           ...submissionFiles,
           ...progressFiles,
         ]));
         const starterCode = labData.starterCode ?? "";
-        const solutionFile =
-          labFiles.find((f) => f.toLowerCase().includes("solution") && f.toLowerCase().endsWith(".py")) ||
-          labFiles[0];
+        const solutionFile = pickStarterFile(labFiles, labData);
 
         const contents = {
-          ...buildInitialFileContents(labFiles, starterCode),
+          ...buildInitialFileContents(labFiles, starterCode, labData),
+          ...labSeedContents,
           ...(progress?.files && typeof progress.files === "object" ? progress.files : {}),
           ...(submission?.files && typeof submission.files === "object" ? submission.files : {}),
         };
