@@ -22,6 +22,8 @@ import GradingPage from "../pages/instructor/GradingPage.jsx";
 import AnalyticsPage from "../pages/instructor/AnalyticsPage.jsx";
 import PlagiarismPage from "../pages/instructor/PlagiarismPage.jsx";
 import InstructorCoursesPage from "../pages/instructor/InstructorCoursesPage.jsx";
+import InstructorStudentsPage from "../pages/instructor/InstructorStudentsPage.jsx";
+import InstructorSettingsPage from "../pages/instructor/InstructorSettingsPage.jsx";
 
 import PeerReviewsPage from "../pages/student/PeerReviewsPage.jsx";
 import AssignedReviewPage from "../pages/student/AssignedReviewPage.jsx";
@@ -64,6 +66,8 @@ function AppRouter() {
         <Route path="/instructor/analytics" element={<AnalyticsPage />} />
         <Route path="/instructor/labs/:labId/plagiarism" element={<PlagiarismPage />} />
         <Route path="/instructor/courses" element={<InstructorCoursesPage />} />
+        <Route path="/instructor/students" element={<InstructorStudentsPage />} />
+        <Route path="/instructor/settings" element={<InstructorSettingsPage />} />
       </Routes>
     </BrowserRouter>
   );

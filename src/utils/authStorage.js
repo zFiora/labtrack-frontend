@@ -26,6 +26,24 @@ export function setCurrentUser(user, rememberMe = false) {
   }
 }
 
+export function updateCurrentUser(patch) {
+  const current = getCurrentUser();
+  if (!current) return null;
+
+  const updated = { ...current, ...patch };
+  const serializedUser = JSON.stringify(updated);
+
+  if (sessionStorage.getItem(CURRENT_USER_KEY)) {
+    sessionStorage.setItem(CURRENT_USER_KEY, serializedUser);
+  }
+
+  if (localStorage.getItem(CURRENT_USER_KEY)) {
+    localStorage.setItem(CURRENT_USER_KEY, serializedUser);
+  }
+
+  return updated;
+}
+
 export function clearCurrentUser() {
   sessionStorage.removeItem(CURRENT_USER_KEY);
   localStorage.removeItem(CURRENT_USER_KEY);

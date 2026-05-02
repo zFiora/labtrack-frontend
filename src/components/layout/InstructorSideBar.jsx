@@ -19,7 +19,9 @@ export default function InstructorSideBar() {
       path: "/instructor/courses",
       matchPaths: ["/instructor/courses"],
     },
+    { label: "Students", icon: "👥", path: "/instructor/students" },
     { label: "Analytics", icon: "📊", path: "/instructor/analytics" },
+    { label: "Settings", icon: "⚙️", path: "/instructor/settings" },
   ];
 
   const border = "#1a2540";
