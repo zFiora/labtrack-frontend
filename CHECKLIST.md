@@ -335,11 +335,11 @@ uses it. This prevents 37 pages from each doing it manually.
 
 ### File: `src/pages/instructor/PlagiarismPage.jsx`
 
-- [ ] **4.10 — Trigger plagiarism check**
+- [x] **4.10 — Trigger plagiarism check**
   - Call `api.post("/instructor/labs/:labId/check-plagiarism")` to run analysis
   - Call `api.get("/instructor/labs/:labId/plagiarism")` to load existing results
 
-- [ ] **4.11 — Update flagged pairs**
+- [x] **4.11 — Update flagged pairs**
   - Call `api.patch("/instructor/labs/:labId/plagiarism/:pairKey", { flagged: true|false })`
 
 ---
