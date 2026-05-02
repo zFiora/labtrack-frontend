@@ -276,16 +276,16 @@ uses it. This prevents 37 pages from each doing it manually.
 
 ### File: `src/pages/instructor/CreateLabPage.jsx`
 
-- [ ] **4.2 — Create lab via API**
+- [x] **4.2 — Create lab via API**
   - Call `api.post("/instructor/labs", { courseId, labNumber, title, instructions, dueDate, points, difficulty, languages, starterCode, testCases, solutions })`
   - Note: field name is `instructions` in backend (not `description`)
   - Lab is created as `"draft"` automatically
 
-- [ ] **4.3 — Edit lab via API**
+- [x] **4.3 — Edit lab via API**
   - Load existing lab: `api.get("/instructor/labs/:labId")` (via `/instructor/labs` list)
   - Save edits: `api.patch("/instructor/labs/:labId", { ...changedFields })`
 
-- [ ] **4.4 — Publish lab via API**
+- [x] **4.4 — Publish lab via API**
   - Call `api.patch("/instructor/labs/:labId/publish", { status: "active" })`
   - On 400 → display the list of validation failures from the response message
   - Remove localStorage save logic
