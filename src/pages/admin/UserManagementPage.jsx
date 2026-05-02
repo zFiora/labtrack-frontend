@@ -282,6 +282,9 @@ export default function UserManagementPage() {
     if (Object.keys(errs).length > 0) { setFormErrors(errs); return; }
     try {
       const updated = await api.patch(`/admin/users/${editUser.id}`, {
+        fullName: editUser.fullName.trim(),
+        email: editUser.email.trim().toLowerCase(),
+        studentId: editUser.studentId.trim(),
         role: editUser.role,
         department: editUser.department,
         status: editUser.status,
