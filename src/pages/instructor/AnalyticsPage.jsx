@@ -110,6 +110,8 @@ function normalizeTestCases(source) {
     return {
       id: entry.id || entry.testCaseId || `test-${index + 1}`,
       description: entry.description || entry.name || `Test ${index + 1}`,
+      passed,
+      total,
       passRate: rateToPct(entry.passRate ?? entry.rate, total > 0 ? fmtPct(passed, total) : 0),
     };
   });
@@ -121,7 +123,10 @@ function normalizeStats(source, lab) {
     source?.totalStudents ?? source?.total ?? source?.enrolledStudents ?? source?.expectedSubmissions,
     0,
   );
-  const submitted = asNumber(source?.submitted ?? source?.submissions ?? source?.submittedCount, 0);
+  const submitted = asNumber(
+    source?.submitted ?? source?.submissions ?? source?.submittedCount ?? source?.totalSubmissions,
+    0,
+  );
   const graded = asNumber(source?.graded ?? source?.gradedCount, 0);
   const late = asNumber(source?.late ?? source?.lateCount ?? source?.lateSubmissions, 0);
   const averageSource = source?.averageScore ?? source?.avgScore ?? source?.meanScore;
@@ -321,7 +326,7 @@ export default function AnalyticsPage() {
         const avgPct = analytics.stats.averageScore === null
           ? null
           : fmtPct(analytics.stats.averageScore, analytics.stats.maxScore);
-        const lowTests = analytics.testCases.filter((testCase) => testCase.passRate < 40);
+        const lowTests = analytics.testCases.filter((testCase) => testCase.total > 0 && testCase.passRate < 40);
         return {
           lab,
           ...analytics,
@@ -336,25 +341,30 @@ export default function AnalyticsPage() {
     const submitted = rows.reduce((sum, row) => sum + row.stats.submitted, 0);
     const graded = rows.reduce((sum, row) => sum + row.stats.graded, 0);
     const late = rows.reduce((sum, row) => sum + row.stats.late, 0);
-    const gradedWeight = rows.reduce((sum, row) => sum + (row.stats.averageScore !== null ? row.stats.graded : 0), 0);
+    const scoredWeight = rows.reduce((sum, row) => (
+      sum + (row.stats.averageScore !== null ? Math.max(row.stats.submitted, 1) : 0)
+    ), 0);
     const weightedScore = rows.reduce((sum, row) => {
       if (row.stats.averageScore === null) return sum;
-      return sum + row.stats.averageScore * Math.max(row.stats.graded, 1);
+      return sum + row.stats.averageScore * Math.max(row.stats.submitted, 1);
     }, 0);
-    const passRates = rows.map((row) => row.stats.passRate).filter((rate) => rate > 0);
+    const testRuns = rows.reduce((sum, row) => (
+      sum + row.testCases.reduce((caseSum, testCase) => caseSum + testCase.total, 0)
+    ), 0);
+    const passedTestRuns = rows.reduce((sum, row) => (
+      sum + row.testCases.reduce((caseSum, testCase) => caseSum + testCase.passed, 0)
+    ), 0);
 
     return {
       totalStudents,
       submitted,
       graded,
       late,
-      averageScore: gradedWeight > 0 ? Math.round(weightedScore / gradedWeight) : null,
+      averageScore: scoredWeight > 0 ? Math.round(weightedScore / scoredWeight) : null,
       submissionRate: fmtPct(submitted, totalStudents),
       completionRate: fmtPct(graded, submitted),
       onTimeRate: fmtPct(Math.max(submitted - late, 0), submitted),
-      passRate: passRates.length
-        ? Math.round(passRates.reduce((sum, rate) => sum + rate, 0) / passRates.length)
-        : 0,
+      passRate: fmtPct(passedTestRuns, testRuns),
     };
   }, [rows]);
 
@@ -510,7 +520,7 @@ export default function AnalyticsPage() {
         ) : (
           <>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 14, marginBottom: 24 }}>
-              <StatCard label="Avg Score" value={totals.averageScore ?? "N/A"} sub="across graded labs" color={totals.averageScore !== null && totals.averageScore >= 70 ? "#4ade80" : "#facc15"} />
+              <StatCard label="Avg Score" value={totals.averageScore ?? "N/A"} sub="across scored submissions" color={totals.averageScore !== null && totals.averageScore >= 70 ? "#4ade80" : "#facc15"} />
               <StatCard label="Submissions" value={`${totals.submitted}/${totals.totalStudents}`} sub={`${totals.submissionRate}% rate`} color="#22d3ee" />
               <StatCard label="Graded" value={totals.graded} sub={`${totals.completionRate}% completion`} color="#a78bfa" />
               <StatCard label="On-time Rate" value={`${totals.onTimeRate}%`} sub={`${totals.late} late`} color={totals.onTimeRate >= 70 ? "#4ade80" : "#facc15"} />
