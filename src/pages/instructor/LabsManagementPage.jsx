@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import InstructorLayout from "../../components/layout/InstructorLayout";
 import { api } from "../../utils/api.js";
@@ -35,6 +35,13 @@ function getLabsPayload(data) {
 
 function getLabPayload(data) {
   return data?.lab ?? data;
+}
+
+function courseMeta(lab) {
+  const courseCode = lab.courseCode || lab.course?.code || "Unassigned Course";
+  const courseName = lab.courseName || lab.course?.name || "";
+  const semester = lab.semester || lab.course?.semester || "";
+  return { courseCode, courseName, semester };
 }
 
 export default function LabsManagementPage() {
@@ -83,6 +90,29 @@ export default function LabsManagementPage() {
   }, [fetchLabs]);
 
   const filtered = labs;
+  const groupedLabs = useMemo(() => {
+    const groups = new Map();
+    filtered.forEach((lab) => {
+      const meta = courseMeta(lab);
+      const key = `${meta.courseCode}-${meta.semester}`;
+      if (!groups.has(key)) {
+        groups.set(key, { ...meta, labs: [] });
+      }
+      groups.get(key).labs.push(lab);
+    });
+
+    return Array.from(groups.values())
+      .map((group) => ({
+        ...group,
+        labs: [...group.labs].sort((a, b) => {
+          const numberA = Number(a.labNumber) || Number.MAX_SAFE_INTEGER;
+          const numberB = Number(b.labNumber) || Number.MAX_SAFE_INTEGER;
+          if (numberA !== numberB) return numberA - numberB;
+          return String(a.title || "").localeCompare(String(b.title || ""));
+        }),
+      }))
+      .sort((a, b) => a.courseCode.localeCompare(b.courseCode));
+  }, [filtered]);
 
   const counts = {
     all: allLabs.length,
@@ -381,7 +411,7 @@ export default function LabsManagementPage() {
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "60px 1fr 110px 160px 70px 90px 1fr 180px",
+                gridTemplateColumns: "60px 1fr 110px 160px 70px 90px 1fr 220px",
                 gap: 0,
                 padding: "12px 20px",
                 borderBottom: "1px solid #1a2540",
@@ -402,188 +432,236 @@ export default function LabsManagementPage() {
               <span>Actions</span>
             </div>
 
-            {filtered.map((lab, i) => {
-              const statusStyle = STATUS_STYLES[lab.status] || STATUS_STYLES.draft;
-              const diffStyle = DIFFICULTY_STYLES[lab.difficulty] || DIFFICULTY_STYLES.medium;
-              const isLast = i === filtered.length - 1;
-
-              return (
+            {groupedLabs.map((group, groupIndex) => (
+              <div key={`${group.courseCode}-${group.semester || groupIndex}`}>
                 <div
-                  key={lab.id}
                   style={{
-                    display: "grid",
-                    gridTemplateColumns: "60px 1fr 110px 160px 70px 90px 1fr 180px",
-                    gap: 0,
-                    padding: "14px 20px",
-                    borderBottom: isLast ? "none" : "1px solid #0f1b33",
+                    display: "flex",
                     alignItems: "center",
-                    transition: "background 0.15s",
+                    justifyContent: "space-between",
+                    gap: 16,
+                    padding: "12px 20px",
+                    borderTop: groupIndex === 0 ? "none" : "1px solid #1a2540",
+                    borderBottom: "1px solid #0f1b33",
+                    background: "rgba(16,33,63,0.72)",
                   }}
-                  onMouseEnter={(e) =>
-                    (e.currentTarget.style.background = "rgba(16,33,63,0.5)")
-                  }
-                  onMouseLeave={(e) =>
-                    (e.currentTarget.style.background = "transparent")
-                  }
                 >
-                  <span style={{ color: "#475569", fontSize: 13, fontWeight: 600 }}>
-                    {lab.labNumber || "—"}
-                  </span>
-                  <div>
-                    <div
-                      style={{
-                        color: "#e2e8f0",
-                        fontSize: 14,
-                        fontWeight: 600,
-                        marginBottom: 2,
-                      }}
-                    >
-                      {lab.title || "Untitled Lab"}
-                    </div>
-                    <div style={{ color: "#475569", fontSize: 11 }}>
-                      {lab.starterFiles?.length > 0
-                        ? `${lab.starterFiles.length} starter file${lab.starterFiles.length > 1 ? "s" : ""}`
-                        : "No files"}
-                    </div>
-                  </div>
-                  <span>
-                    <span
-                      style={{
-                        display: "inline-block",
-                        padding: "3px 10px",
-                        borderRadius: 20,
-                        fontSize: 11,
-                        fontWeight: 700,
-                        background: statusStyle.bg,
-                        color: statusStyle.text,
-                        border: `1px solid ${statusStyle.border}`,
-                        textTransform: "capitalize",
-                      }}
-                    >
-                      {lab.status}
-                    </span>
-                  </span>
-                  <span style={{ color: "#94a3b8", fontSize: 12 }}>
-                    {formatDate(lab.dueDate)}
-                  </span>
-                  <span style={{ color: "#e2e8f0", fontSize: 13, fontWeight: 600 }}>
-                    {lab.points || 0}
-                  </span>
-                  <span
-                    style={{
-                      color: diffStyle.text,
-                      fontSize: 12,
-                      fontWeight: 600,
-                      textTransform: "capitalize",
-                    }}
-                  >
-                    {lab.difficulty || "medium"}
-                  </span>
-                  <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-                    {(lab.languages || []).slice(0, 3).map((lang) => (
-                      <span
-                        key={lang}
-                        style={{
-                          padding: "2px 8px",
-                          borderRadius: 6,
-                          fontSize: 11,
-                          background: "rgba(34,211,238,0.1)",
-                          color: "#22d3ee",
-                          border: "1px solid rgba(34,211,238,0.2)",
-                        }}
-                      >
-                        {lang}
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                      <span style={{ color: "#22d3ee", fontSize: 13, fontWeight: 800, fontFamily: "monospace" }}>
+                        {group.courseCode}
                       </span>
-                    ))}
-                    {(lab.languages || []).length > 3 && (
-                      <span style={{ fontSize: 11, color: "#475569" }}>
-                        +{lab.languages.length - 3}
-                      </span>
-                    )}
+                      {group.courseName && (
+                        <span style={{ color: "#e2e8f0", fontSize: 13, fontWeight: 700 }}>
+                          {group.courseName}
+                        </span>
+                      )}
+                      {group.semester && (
+                        <span
+                          style={{
+                            color: "#a78bfa",
+                            background: "rgba(168,85,247,0.10)",
+                            border: "1px solid rgba(168,85,247,0.20)",
+                            borderRadius: 7,
+                            padding: "2px 7px",
+                            fontSize: 10,
+                            fontWeight: 800,
+                          }}
+                        >
+                          {group.semester}
+                        </span>
+                      )}
+                    </div>
                   </div>
-                  <div style={{ display: "flex", gap: 6 }}>
-                    <button
-                      onClick={() => navigate(`/instructor/labs/${lab.id}/submissions`)}
-                      style={{
-                        padding: "5px 10px",
-                        borderRadius: 7,
-                        border: "1px solid rgba(34,211,238,0.2)",
-                        background: "rgba(34,211,238,0.1)",
-                        color: "#22d3ee",
-                        fontSize: 12,
-                        cursor: "pointer",
-                        fontWeight: 600,
-                      }}
-                    >
-                      Submissions
-                    </button>
-                    <button
-                      onClick={() => navigate(`/instructor/labs/${lab.id}/edit`)}
-                      style={{
-                        padding: "5px 10px",
-                        borderRadius: 7,
-                        border: "1px solid #1e3a5f",
-                        background: "transparent",
-                        color: "#94a3b8",
-                        fontSize: 12,
-                        cursor: "pointer",
-                        fontWeight: 500,
-                      }}
-                    >
-                      Edit
-                    </button>
-                    {lab.status === "draft" && (
-                      <button
-                        onClick={() => handleQuickPublish(lab.id)}
-                        style={{
-                          padding: "5px 10px",
-                          borderRadius: 7,
-                          border: "none",
-                          background: "rgba(34,211,238,0.15)",
-                          color: "#22d3ee",
-                          fontSize: 12,
-                          cursor: "pointer",
-                          fontWeight: 600,
-                        }}
-                      >
-                        Publish
-                      </button>
-                    )}
-                    {lab.status === "active" && (
-                      <button
-                        onClick={() => handleClose(lab.id)}
-                        style={{
-                          padding: "5px 10px",
-                          borderRadius: 7,
-                          border: "none",
-                          background: "rgba(239,68,68,0.12)",
-                          color: "#f87171",
-                          fontSize: 12,
-                          cursor: "pointer",
-                          fontWeight: 600,
-                        }}
-                      >
-                        Close
-                      </button>
-                    )}
-                    <button
-                      onClick={() => setDeleteConfirm(lab.id)}
-                      style={{
-                        padding: "5px 8px",
-                        borderRadius: 7,
-                        border: "1px solid rgba(239,68,68,0.2)",
-                        background: "transparent",
-                        color: "#f87171",
-                        fontSize: 13,
-                        cursor: "pointer",
-                      }}
-                    >
-                      🗑
-                    </button>
-                  </div>
+                  <span style={{ color: "#64748b", fontSize: 12, fontWeight: 700 }}>
+                    {group.labs.length} lab{group.labs.length !== 1 ? "s" : ""}
+                  </span>
                 </div>
-              );
-            })}
+
+                {group.labs.map((lab, i) => {
+                  const statusStyle = STATUS_STYLES[lab.status] || STATUS_STYLES.draft;
+                  const diffStyle = DIFFICULTY_STYLES[lab.difficulty] || DIFFICULTY_STYLES.medium;
+                  const isLast = i === group.labs.length - 1;
+
+                  return (
+                    <div
+                      key={lab.id}
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "60px 1fr 110px 160px 70px 90px 1fr 220px",
+                        gap: 0,
+                        padding: "14px 20px",
+                        borderBottom: isLast ? "none" : "1px solid #0f1b33",
+                        alignItems: "center",
+                        transition: "background 0.15s",
+                      }}
+                      onMouseEnter={(e) =>
+                        (e.currentTarget.style.background = "rgba(16,33,63,0.5)")
+                      }
+                      onMouseLeave={(e) =>
+                        (e.currentTarget.style.background = "transparent")
+                      }
+                    >
+                      <span style={{ color: "#475569", fontSize: 13, fontWeight: 600 }}>
+                        {lab.labNumber || "—"}
+                      </span>
+                      <div>
+                        <div
+                          style={{
+                            color: "#e2e8f0",
+                            fontSize: 14,
+                            fontWeight: 600,
+                            marginBottom: 2,
+                          }}
+                        >
+                          {lab.title || "Untitled Lab"}
+                        </div>
+                        <div style={{ color: "#475569", fontSize: 11 }}>
+                          {lab.starterFiles?.length > 0
+                            ? `${lab.starterFiles.length} starter file${lab.starterFiles.length > 1 ? "s" : ""}`
+                            : "No files"}
+                        </div>
+                      </div>
+                      <span>
+                        <span
+                          style={{
+                            display: "inline-block",
+                            padding: "3px 10px",
+                            borderRadius: 20,
+                            fontSize: 11,
+                            fontWeight: 700,
+                            background: statusStyle.bg,
+                            color: statusStyle.text,
+                            border: `1px solid ${statusStyle.border}`,
+                            textTransform: "capitalize",
+                          }}
+                        >
+                          {lab.status}
+                        </span>
+                      </span>
+                      <span style={{ color: "#94a3b8", fontSize: 12 }}>
+                        {formatDate(lab.dueDate)}
+                      </span>
+                      <span style={{ color: "#e2e8f0", fontSize: 13, fontWeight: 600 }}>
+                        {lab.points || 0}
+                      </span>
+                      <span
+                        style={{
+                          color: diffStyle.text,
+                          fontSize: 12,
+                          fontWeight: 600,
+                          textTransform: "capitalize",
+                        }}
+                      >
+                        {lab.difficulty || "medium"}
+                      </span>
+                      <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                        {(lab.languages || []).slice(0, 3).map((lang) => (
+                          <span
+                            key={lang}
+                            style={{
+                              padding: "2px 8px",
+                              borderRadius: 6,
+                              fontSize: 11,
+                              background: "rgba(34,211,238,0.1)",
+                              color: "#22d3ee",
+                              border: "1px solid rgba(34,211,238,0.2)",
+                            }}
+                          >
+                            {lang}
+                          </span>
+                        ))}
+                        {(lab.languages || []).length > 3 && (
+                          <span style={{ fontSize: 11, color: "#475569" }}>
+                            +{lab.languages.length - 3}
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ display: "flex", gap: 6 }}>
+                        <button
+                          onClick={() => navigate(`/instructor/labs/${lab.id}/submissions`)}
+                          style={{
+                            padding: "5px 10px",
+                            borderRadius: 7,
+                            border: "1px solid rgba(34,211,238,0.2)",
+                            background: "rgba(34,211,238,0.1)",
+                            color: "#22d3ee",
+                            fontSize: 12,
+                            cursor: "pointer",
+                            fontWeight: 600,
+                          }}
+                        >
+                          Submissions
+                        </button>
+                        <button
+                          onClick={() => navigate(`/instructor/labs/${lab.id}/edit`)}
+                          style={{
+                            padding: "5px 10px",
+                            borderRadius: 7,
+                            border: "1px solid #1e3a5f",
+                            background: "transparent",
+                            color: "#94a3b8",
+                            fontSize: 12,
+                            cursor: "pointer",
+                            fontWeight: 500,
+                          }}
+                        >
+                          Edit
+                        </button>
+                        {lab.status === "draft" && (
+                          <button
+                            onClick={() => handleQuickPublish(lab.id)}
+                            style={{
+                              padding: "5px 10px",
+                              borderRadius: 7,
+                              border: "none",
+                              background: "rgba(34,211,238,0.15)",
+                              color: "#22d3ee",
+                              fontSize: 12,
+                              cursor: "pointer",
+                              fontWeight: 600,
+                            }}
+                          >
+                            Publish
+                          </button>
+                        )}
+                        {lab.status === "active" && (
+                          <button
+                            onClick={() => handleClose(lab.id)}
+                            style={{
+                              padding: "5px 10px",
+                              borderRadius: 7,
+                              border: "none",
+                              background: "rgba(239,68,68,0.12)",
+                              color: "#f87171",
+                              fontSize: 12,
+                              cursor: "pointer",
+                              fontWeight: 600,
+                            }}
+                          >
+                            Close
+                          </button>
+                        )}
+                        <button
+                          onClick={() => setDeleteConfirm(lab.id)}
+                          style={{
+                            padding: "5px 8px",
+                            borderRadius: 7,
+                            border: "1px solid rgba(239,68,68,0.2)",
+                            background: "transparent",
+                            color: "#f87171",
+                            fontSize: 13,
+                            cursor: "pointer",
+                          }}
+                        >
+                          🗑
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
           </div>
         )}
       </div>
