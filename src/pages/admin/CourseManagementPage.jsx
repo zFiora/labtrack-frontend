@@ -52,6 +52,78 @@ function sectionTimeLabel(section) {
   return `${formatTime(start)} – ${formatTime(end)}`;
 }
 
+function entityId(value) {
+  if (!value) return "";
+  if (typeof value === "string") return value;
+  if (value.id) return String(value.id);
+  if (value._id) return String(value._id);
+  return String(value);
+}
+
+function getSectionEnrollmentIds(section) {
+  return [...new Set((section?.enrolledStudentIds || section?.students || []).map(entityId).filter(Boolean))];
+}
+
+function getUniqueCourseEnrollmentCount(course) {
+  const ids = new Set();
+  (course?.sections || []).forEach((section) => {
+    getSectionEnrollmentIds(section).forEach((id) => ids.add(id));
+  });
+  return ids.size;
+}
+
+function getUniqueEnrollmentCount(courses) {
+  const ids = new Set();
+  courses.forEach((course) => {
+    (course.sections || []).forEach((section) => {
+      getSectionEnrollmentIds(section).forEach((id) => ids.add(id));
+    });
+  });
+  return ids.size;
+}
+
+function normalizeStudentSummary(student, fallbackId = "") {
+  if (!student || typeof student !== "object") {
+    return {
+      id: fallbackId,
+      fullName: "Unknown student",
+      email: "",
+      studentId: "",
+      department: "",
+      status: "",
+    };
+  }
+
+  return {
+    id: entityId(student) || fallbackId,
+    fullName: student.fullName || "Unknown student",
+    email: student.email || "",
+    studentId: student.studentId || "",
+    department: student.department || "",
+    status: student.status || "",
+  };
+}
+
+function getEnrolledStudentDetails(section, users) {
+  const usersById = new Map(users.map((user) => [entityId(user), user]));
+  const byId = new Map();
+
+  (section?.enrolledStudents || []).forEach((student) => {
+    const id = entityId(student);
+    if (id) byId.set(id, normalizeStudentSummary(student, id));
+  });
+
+  getSectionEnrollmentIds(section).forEach((id) => {
+    if (!byId.has(id)) byId.set(id, normalizeStudentSummary(usersById.get(id), id));
+  });
+
+  return Array.from(byId.values()).sort((a, b) => {
+    const left = a.studentId || a.fullName || a.email || a.id;
+    const right = b.studentId || b.fullName || b.email || b.id;
+    return left.localeCompare(right);
+  });
+}
+
 function timesOverlap(s1, e1, s2, e2) {
   if (!s1 || !e1 || !s2 || !e2) return false;
   return s1 < e2 && e1 > s2;
@@ -152,6 +224,7 @@ export default function CourseManagementPage() {
   const [addSectionFor, setAddSectionFor] = useState(null);
   const [editingSection, setEditingSection] = useState(null);
   const [enrollFor, setEnrollFor] = useState(null);
+  const [viewEnrollmentFor, setViewEnrollmentFor] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [removeInstTarget, setRemoveInstTarget] = useState(null);
 
@@ -207,7 +280,7 @@ export default function CourseManagementPage() {
   });
 
   const totalSections = courses.reduce((n, c) => n + (c.sections || []).length, 0);
-  const totalEnrolled = courses.reduce((n, c) => n + (c.sections || []).reduce((s, sec) => s + (sec.enrolledStudentIds || []).length, 0), 0);
+  const totalEnrolled = getUniqueEnrollmentCount(courses);
 
   // ── Course validation & CRUD ──
   const validateCourse = (data, editId = null) => {
@@ -399,16 +472,18 @@ export default function CourseManagementPage() {
     const section = course?.sections.find((s) => s.id === sectionId);
     if (!section) return;
 
-    const allEnrolledInCourse = new Set(course.sections.flatMap((s) => s.enrolledStudentIds || []));
+    const sectionStudentIds = new Set(getSectionEnrollmentIds(section));
+    const allEnrolledInCourse = new Set(course.sections.flatMap(getSectionEnrollmentIds));
     const matched = [], notFound = [], alreadyEnrolled = [];
 
     rawIds.forEach((sid) => {
       const user = students.find((u) => u.studentId === sid || u.id === sid);
+      const userId = entityId(user);
       if (!user) {
         notFound.push(sid);
-      } else if ((section.enrolledStudentIds || []).includes(user.id)) {
+      } else if (sectionStudentIds.has(userId)) {
         alreadyEnrolled.push({ ...user, note: "already in this section" });
-      } else if (allEnrolledInCourse.has(user.id)) {
+      } else if (allEnrolledInCourse.has(userId)) {
         alreadyEnrolled.push({ ...user, note: "enrolled in another section of this course" });
       } else {
         matched.push(user);
@@ -438,13 +513,13 @@ export default function CourseManagementPage() {
   };
 
   const handleConfirmEnroll = async () => {
-    const newIds = enrollPreview.matched.map((u) => u.id);
+    const newIds = enrollPreview.matched.map((u) => entityId(u));
     const { courseId, section } = enrollFor;
     const course = courses.find((c) => c.id === courseId);
     const newSections = (course?.sections || []).map((s) =>
       s.id !== section.id ? s : {
         ...s,
-        enrolledStudentIds: [...new Set([...(s.enrolledStudentIds || []), ...newIds])],
+        enrolledStudentIds: [...new Set([...getSectionEnrollmentIds(s), ...newIds])],
       },
     );
     try {
@@ -610,7 +685,7 @@ export default function CourseManagementPage() {
             {filtered.map((course) => {
               const isExp = !!expanded[course.id];
               const deptColor = DEPT_COLORS[course.department] || "#94a3b8";
-              const courseEnrolled = (course.sections || []).reduce((n, s) => n + (s.enrolledStudentIds || []).length, 0);
+              const courseEnrolled = getUniqueCourseEnrollmentCount(course);
 
               return (
                 <div key={course.id} style={{ background: "#0a1628", border: "1px solid #1a2540", borderRadius: 14, overflow: "hidden" }}>
@@ -680,13 +755,13 @@ export default function CourseManagementPage() {
                       ) : (
                         <>
                           {/* Section table header */}
-                          <div style={{ display: "grid", gridTemplateColumns: "70px 130px 180px 80px 110px 1fr 220px", padding: "8px 20px 8px 56px", background: "rgba(0,0,0,0.2)", fontSize: 10, fontWeight: 700, color: "#475569", letterSpacing: "0.08em", textTransform: "uppercase" }}>
+                          <div style={{ display: "grid", gridTemplateColumns: "70px 130px 180px 80px 130px 1fr 220px", padding: "8px 20px 8px 56px", background: "rgba(0,0,0,0.2)", fontSize: 10, fontWeight: 700, color: "#475569", letterSpacing: "0.08em", textTransform: "uppercase" }}>
                             <span>Section</span><span>Days</span><span>Time</span><span>Cap</span><span>Enrolled</span><span>Instructor</span><span>Actions</span>
                           </div>
 
                           {(course.sections || []).map((sec, si) => {
                             const inst = getUser(sec.instructorId);
-                            const enrolled = (sec.enrolledStudentIds || []).length;
+                            const enrolled = getSectionEnrollmentIds(sec).length;
                             const capacity = Number(sec.capacity) || 0;
                             const pct = capacity > 0 ? Math.round((enrolled / capacity) * 100) : 0;
                             const isLast = si === course.sections.length - 1;
@@ -694,7 +769,7 @@ export default function CourseManagementPage() {
                             return (
                               <div
                                 key={sec.id || `${course.id}-${sec.sectionNumber}`}
-                                style={{ display: "grid", gridTemplateColumns: "70px 130px 180px 80px 110px 1fr 220px", padding: "12px 20px 12px 56px", borderBottom: isLast ? "none" : "1px solid #0f1b33", alignItems: "center" }}
+                                style={{ display: "grid", gridTemplateColumns: "70px 130px 180px 80px 130px 1fr 220px", padding: "12px 20px 12px 56px", borderBottom: isLast ? "none" : "1px solid #0f1b33", alignItems: "center" }}
                               >
                                 <span style={{ fontSize: 13, fontWeight: 700, color: "#e2e8f0" }}>§ {sec.sectionNumber}</span>
                                 <span style={{ fontSize: 12, color: "#94a3b8" }}>{sectionDays(sec).join(" / ") || "—"}</span>
@@ -703,7 +778,17 @@ export default function CourseManagementPage() {
 
                                 {/* Enrollment bar */}
                                 <div>
-                                  <div style={{ fontSize: 12, color: pct >= 90 ? "#f87171" : "#64748b" }}>{enrolled}/{capacity || "—"}</div>
+                                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                    <span style={{ fontSize: 12, color: pct >= 90 ? "#f87171" : "#64748b" }}>{enrolled}/{capacity || "—"}</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => setViewEnrollmentFor({ courseId: course.id, sectionId: sec.id })}
+                                      disabled={enrolled === 0}
+                                      style={{ padding: "2px 7px", borderRadius: 6, border: "1px solid rgba(34,211,238,0.22)", background: enrolled > 0 ? "rgba(34,211,238,0.08)" : "transparent", color: enrolled > 0 ? "#22d3ee" : "#334155", fontSize: 10, cursor: enrolled > 0 ? "pointer" : "not-allowed", fontWeight: 700 }}
+                                    >
+                                      View
+                                    </button>
+                                  </div>
                                   <div style={{ marginTop: 4, height: 3, borderRadius: 2, background: "#1a2540" }}>
                                     <div style={{ height: "100%", width: `${Math.min(pct, 100)}%`, borderRadius: 2, background: pct >= 90 ? "#f87171" : "#22d3ee" }} />
                                   </div>
@@ -950,11 +1035,11 @@ export default function CourseManagementPage() {
         </Modal>
       )}
 
-      {/* ── Enroll Students Modal ── */}
-      {enrollFor && (() => {
-        const course = courses.find((c) => c.id === enrollFor.courseId);
-        const sec = enrollFor.section;
-        return (
+            {/* ── Enroll Students Modal ── */}
+            {enrollFor && (() => {
+              const course = courses.find((c) => c.id === enrollFor.courseId);
+              const sec = enrollFor.section;
+              return (
           <Modal
             title={`Enroll Students — ${course?.courseCode} Sec ${sec.sectionNumber}`}
             onClose={closeEnroll}
@@ -1019,9 +1104,9 @@ export default function CourseManagementPage() {
             ) : (
               // Input screen
               <div>
-                <p style={{ color: "#64748b", fontSize: 13, margin: "0 0 16px" }}>
-                  Current enrollment: <strong style={{ color: "#e2e8f0" }}>{(sec.enrolledStudentIds || []).length}/{sec.capacity}</strong>
-                </p>
+                      <p style={{ color: "#64748b", fontSize: 13, margin: "0 0 16px" }}>
+                        Current enrollment: <strong style={{ color: "#e2e8f0" }}>{getSectionEnrollmentIds(sec).length}/{sec.capacity}</strong>
+                      </p>
 
                 {/* Tabs */}
                 <div style={{ display: "flex", gap: 4, marginBottom: 20, background: "#0a1628", border: "1px solid #1a2540", borderRadius: 10, padding: 4, width: "fit-content" }}>
@@ -1078,11 +1163,81 @@ export default function CourseManagementPage() {
               </div>
             )}
           </Modal>
-        );
-      })()}
+              );
+            })()}
 
-      {/* ── Delete Confirmation ── */}
-      {deleteTarget && (
+            {/* -- View Enrolled Students Modal -- */}
+            {viewEnrollmentFor && (() => {
+              const course = courses.find((c) => c.id === viewEnrollmentFor.courseId);
+              const sec = course?.sections?.find((s) => s.id === viewEnrollmentFor.sectionId);
+              const enrolledStudents = getEnrolledStudentDetails(sec, users);
+              return (
+                <Modal
+                  title={`Enrolled Students - ${course?.courseCode || "Course"} Sec ${sec?.sectionNumber || ""}`}
+                  onClose={() => setViewEnrollmentFor(null)}
+                  width={760}
+                >
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 16 }}>
+                    <div>
+                      <p style={{ color: "#e2e8f0", fontSize: 14, fontWeight: 700, margin: 0 }}>
+                        {course?.name || "Selected course"}
+                      </p>
+                      <p style={{ color: "#64748b", fontSize: 12, margin: "4px 0 0" }}>
+                        {enrolledStudents.length} enrolled student{enrolledStudents.length !== 1 ? "s" : ""} of {sec?.capacity || "unlimited"} seats
+                      </p>
+                    </div>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: "#22d3ee", background: "rgba(34,211,238,0.08)", border: "1px solid rgba(34,211,238,0.2)", borderRadius: 8, padding: "6px 10px", whiteSpace: "nowrap" }}>
+                      {course?.courseCode || "Course"} - SEC {sec?.sectionNumber || ""}
+                    </span>
+                  </div>
+
+                  {enrolledStudents.length === 0 ? (
+                    <div style={{ padding: "32px 20px", textAlign: "center", background: "#0a1628", border: "1px dashed #1e3a5f", borderRadius: 10 }}>
+                      <div style={{ fontSize: 34, marginBottom: 10 }}>🎓</div>
+                      <p style={{ color: "#e2e8f0", fontSize: 14, fontWeight: 700, margin: "0 0 4px" }}>No students enrolled yet</p>
+                      <p style={{ color: "#64748b", fontSize: 12, margin: 0 }}>Use Enroll Students to add this section roster.</p>
+                    </div>
+                  ) : (
+                    <div style={{ background: "#0a1628", border: "1px solid #1a2540", borderRadius: 10, overflow: "hidden" }}>
+                      <div style={{ display: "grid", gridTemplateColumns: "1.4fr 110px 1.6fr 90px", gap: 12, padding: "10px 14px", background: "rgba(0,0,0,0.22)", color: "#64748b", fontSize: 10, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase" }}>
+                        <span>Student</span>
+                        <span>ID</span>
+                        <span>Email</span>
+                        <span>Status</span>
+                      </div>
+                      <div style={{ maxHeight: 360, overflowY: "auto" }}>
+                        {enrolledStudents.map((student, index) => {
+                          const active = (student.status || "").toLowerCase() !== "inactive";
+                          return (
+                            <div
+                              key={student.id || `${student.email}-${index}`}
+                              style={{ display: "grid", gridTemplateColumns: "1.4fr 110px 1.6fr 90px", gap: 12, alignItems: "center", padding: "12px 14px", borderTop: index === 0 ? "none" : "1px solid #0f1b33" }}
+                            >
+                              <div style={{ minWidth: 0 }}>
+                                <div style={{ color: "#e2e8f0", fontSize: 13, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{student.fullName}</div>
+                                <div style={{ color: "#475569", fontSize: 11 }}>{student.department || "No department"}</div>
+                              </div>
+                              <span style={{ color: student.studentId ? "#94a3b8" : "#475569", fontSize: 12, fontFamily: "monospace" }}>{student.studentId || "Unknown"}</span>
+                              <span style={{ color: student.email ? "#94a3b8" : "#475569", fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{student.email || "No email"}</span>
+                              <span style={{ justifySelf: "start", padding: "3px 9px", borderRadius: 999, border: `1px solid ${active ? "rgba(74,222,128,0.24)" : "rgba(248,113,113,0.24)"}`, background: active ? "rgba(74,222,128,0.08)" : "rgba(248,113,113,0.08)", color: active ? "#4ade80" : "#f87171", fontSize: 11, fontWeight: 800 }}>
+                                {student.status || "Active"}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 18 }}>
+                    <button onClick={() => setViewEnrollmentFor(null)} style={btnSecondary}>Close</button>
+                  </div>
+                </Modal>
+              );
+            })()}
+
+            {/* ── Delete Confirmation ── */}
+            {deleteTarget && (
         <Modal title="Confirm Delete" onClose={() => setDeleteTarget(null)} width={400}>
           <div style={{ textAlign: "center" }}>
             <div style={{ fontSize: 40, marginBottom: 12 }}>⚠️</div>
