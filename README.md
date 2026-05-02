@@ -51,20 +51,24 @@ The application now supports API-backed user flows for students, instructors, an
 ## Project Structure
 
 ```txt
-src/
-assets/
-components/
-layout/
-pages/
-auth/
-student/
-instructor/
-admin/
-router/
-styles/
-utils/
-App.jsx
-main.jsx
+labtrack-frontend/
+├── public/                 # Static files served by Vite
+├── src/
+│   ├── components/
+│   │   └── layout/         # Shared layout and navigation components
+│   ├── pages/
+│   │   ├── admin/          # Admin user, course, department, system, security, analytics, backup pages
+│   │   ├── auth/           # Login, registration, forgot-password, reset-password pages
+│   │   ├── instructor/     # Lab management, grading, courses, students, analytics, settings
+│   │   └── student/        # Dashboard, labs, workspace, grades, history, peer review, solutions
+│   ├── router/             # React Router route map
+│   ├── styles/             # Global styling
+│   ├── utils/              # API client and auth storage helpers
+│   ├── App.jsx             # App shell
+│   └── main.jsx            # React entry point
+├── index.html              # Vite HTML entry
+├── package.json            # Scripts and dependencies
+└── vercel.json             # Vercel SPA rewrite configuration
 ```
 
 ---
