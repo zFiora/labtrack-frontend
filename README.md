@@ -2,6 +2,8 @@
 
 LabTrack is a web-based platform designed to manage and streamline programming lab work for both students and instructors. This project represents the front-end application of the system, developed using React + Vite and connected to the LabTrack backend API.
 
+Live app: [https://labtrack-frontend-pearl.vercel.app](https://labtrack-frontend-pearl.vercel.app)
+
 ---
 
 ## Project Overview
