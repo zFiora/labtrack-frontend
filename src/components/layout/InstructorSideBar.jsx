@@ -13,6 +13,12 @@ export default function InstructorSideBar() {
       path: "/instructor/labs",
       matchPaths: ["/instructor/labs"],
     },
+    {
+      label: "Courses",
+      icon: "📚",
+      path: "/instructor/courses",
+      matchPaths: ["/instructor/courses"],
+    },
     { label: "Students", icon: "👥", path: "/instructor/students", disabled: true },
     { label: "Analytics", icon: "📊", path: "/instructor/analytics" },
     { label: "Settings", icon: "⚙️", path: "/instructor/settings", disabled: true },
