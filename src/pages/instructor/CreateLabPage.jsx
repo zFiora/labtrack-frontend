@@ -3,9 +3,8 @@ import { useNavigate, useParams } from "react-router-dom";
 import InstructorLayout from "../../components/layout/InstructorLayout";
 import TestCasesTab from "./TestCasesTab";
 import SolutionsTab from "./SolutionsTab";
-import { getCurrentUser } from "../../utils/authStorage.js";
+import { api } from "../../utils/api.js";
 
-const LABS_KEY = "labtrack_instructor_labs";
 const LANGUAGES = ["Python", "C++", "C", "Java", "JavaScript", "Go", "Rust"];
 const AUTO_SAVE_INTERVAL_MS = 2 * 60 * 1000; // 2 minutes
 
@@ -70,12 +69,187 @@ const STATUS_BADGE = {
   active: { bg: "rgba(34,197,94,0.12)", text: "#4ade80", border: "rgba(34,197,94,0.25)" },
 };
 
+function getLabPayload(data) {
+  return data?.lab ?? data;
+}
+
+function getStarterCode(starterFiles) {
+  return starterFiles
+    .map((file) => file.content || file.code || "")
+    .find((content) => content.trim()) ?? "";
+}
+
+function toIsoString(value) {
+  if (!value) return undefined;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toISOString();
+}
+
+function shouldSendApiId(id, prefix) {
+  return id && !String(id).startsWith(`${prefix}-`);
+}
+
+function normalizeTestCasesForApi(testCases) {
+  return testCases.map((testCase, index) => {
+    const type = testCase.type || testCase.visibility || "visible";
+    const id = shouldSendApiId(testCase.id, "tc") ? { id: testCase.id } : {};
+
+    return {
+      ...id,
+      name: testCase.name || `Test Case ${index + 1}`,
+      description: testCase.description || testCase.name || `Test Case ${index + 1}`,
+      type: type === "hidden" ? "hidden" : "visible",
+      expectedInput: testCase.expectedInput ?? testCase.input ?? "",
+      expectedOutput: testCase.expectedOutput ?? "",
+      points: Number.parseInt(testCase.points, 10) || 0,
+      order: Number.isInteger(Number(testCase.order)) ? Number(testCase.order) : index + 1,
+    };
+  });
+}
+
+function normalizeTestCasesForEditor(testCases) {
+  return testCases.map((testCase, index) => ({
+    id: testCase.id || `tc-loaded-${index + 1}`,
+    description: testCase.description || testCase.name || `Test Case ${index + 1}`,
+    input: testCase.input ?? testCase.expectedInput ?? "",
+    expectedOutput: testCase.expectedOutput ?? "",
+    points: testCase.points ?? "",
+    visibility: testCase.visibility || testCase.type || "visible",
+    timeout: testCase.timeout ?? testCase.timeoutSeconds ?? 5,
+    verified: Boolean(testCase.verified),
+  }));
+}
+
+function getDefaultSolutionFileName(language) {
+  const normalized = String(language || "").toLowerCase();
+  if (normalized.includes("python")) return "main.py";
+  if (normalized.includes("java") && !normalized.includes("script")) return "Main.java";
+  if (normalized.includes("javascript")) return "main.js";
+  if (normalized.includes("c++")) return "main.cpp";
+  if (normalized === "c") return "main.c";
+  if (normalized.includes("go")) return "main.go";
+  if (normalized.includes("rust")) return "main.rs";
+  return "solution.txt";
+}
+
+function getFirstFileContent(files) {
+  if (!files || Array.isArray(files) || typeof files !== "object") return "";
+  return Object.values(files).find((content) => typeof content === "string" && content.trim()) ?? "";
+}
+
+function buildSolutionFiles(solution) {
+  const code = solution.code ?? "";
+  if (code.trim()) {
+    return { [getDefaultSolutionFileName(solution.language)]: code };
+  }
+  return solution.files && typeof solution.files === "object" && !Array.isArray(solution.files)
+    ? solution.files
+    : {};
+}
+
+function getSolutionUnlockedAt(solution, labDueDate) {
+  if (solution.releaseMode === "immediate") {
+    return toIsoString(solution.publishedAt) || new Date().toISOString();
+  }
+
+  if (solution.releaseMode === "scheduled") {
+    return toIsoString(solution.releaseDate || solution.unlockedAt);
+  }
+
+  if (solution.releaseMode === "after_graded" && labDueDate) {
+    const due = new Date(labDueDate);
+    if (!Number.isNaN(due.getTime())) {
+      return new Date(due.getTime() + 2 * 24 * 60 * 60 * 1000).toISOString();
+    }
+  }
+
+  return toIsoString(solution.unlockedAt || solution.releaseDate);
+}
+
+function normalizeSolutionsForApi(solutions, labDueDate) {
+  return solutions.map((solution, index) => {
+    const id = shouldSendApiId(solution.id, "sol") ? { id: solution.id } : {};
+    const unlockedAt = getSolutionUnlockedAt(solution, labDueDate);
+
+    return {
+      ...id,
+      type: solution.type === "top_student" ? "top_student" : "instructor",
+      title: solution.title?.trim() || `Solution ${index + 1}`,
+      language: solution.language,
+      files: buildSolutionFiles(solution),
+      explanation: solution.explanation?.trim() || undefined,
+      ...(unlockedAt ? { unlockedAt } : {}),
+    };
+  });
+}
+
+function normalizeSolutionsForEditor(solutions) {
+  return solutions.map((solution, index) => {
+    const unlockedAt = solution.unlockedAt || solution.releaseDate;
+    const unlockedDate = unlockedAt ? new Date(unlockedAt) : null;
+    const isPublished = unlockedDate && !Number.isNaN(unlockedDate.getTime()) && unlockedDate <= new Date();
+    const releaseMode = solution.releaseMode || (unlockedAt ? "scheduled" : "after_graded");
+
+    return {
+      id: solution.id || `sol-loaded-${index + 1}`,
+      title: solution.title || `Solution ${index + 1}`,
+      language: solution.language || "",
+      code: solution.code ?? getFirstFileContent(solution.files),
+      explanation: solution.explanation || "",
+      releaseMode,
+      releaseDate: releaseMode === "scheduled" ? toDateTimeLocalValue(unlockedAt) : "",
+      publishedAt: solution.publishedAt || (isPublished ? unlockedAt : null),
+      status: solution.status || (isPublished ? "published" : "scheduled"),
+    };
+  });
+}
+
+function buildLabPayload(formData, starter, _supporting, tcs, sols) {
+  return {
+    courseId: formData.courseId.trim(),
+    labNumber: Number.parseInt(formData.labNumber, 10) || undefined,
+    title: formData.title.trim(),
+    instructions: formData.instructions.trim(),
+    dueDate: formData.dueDate || undefined,
+    points: Number.parseInt(formData.points, 10) || undefined,
+    difficulty: formData.difficulty,
+    languages: formData.languages,
+    starterCode: getStarterCode(starter),
+    testCases: normalizeTestCasesForApi(tcs),
+    solutions: normalizeSolutionsForApi(sols, formData.dueDate),
+  };
+}
+
+function toDateTimeLocalValue(value) {
+  if (!value) return "";
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)) return value;
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+  return local.toISOString().slice(0, 16);
+}
+
+function parseValidationFailures(message) {
+  if (Array.isArray(message)) return message.filter(Boolean);
+  const text = String(message || "").trim();
+  if (!text) return ["Lab could not be published."];
+
+  return text
+    .replace(/^validation failed:?\s*/i, "")
+    .split(/\n|;|,(?=\s*[A-Z])|\.\s+(?=[A-Z])/)
+    .map((item) => item.replace(/^[-*]\s*/, "").trim())
+    .filter(Boolean);
+}
+
 export default function CreateLabPage() {
   const navigate = useNavigate();
   const { labId } = useParams();
   const isEditing = Boolean(labId);
 
   const [form, setForm] = useState({
+    courseId: "",
     labNumber: "",
     title: "",
     instructions: "",
@@ -87,9 +261,13 @@ export default function CreateLabPage() {
   const [starterFiles, setStarterFiles] = useState([]);
   const [supportingFiles, setSupportingFiles] = useState([]);
   const [errors, setErrors] = useState({});
+  const [publishErrors, setPublishErrors] = useState([]);
   const [toast, setToast] = useState(null);
   const [lastSaved, setLastSaved] = useState(null);
   const [labStatus, setLabStatus] = useState("draft");
+  const [isSaving, setIsSaving] = useState(false);
+  const [labLoading, setLabLoading] = useState(isEditing);
+  const [labLoadError, setLabLoadError] = useState("");
   const [showPublishConfirm, setShowPublishConfirm] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
   const [uploadingFiles, setUploadingFiles] = useState({});
@@ -101,6 +279,7 @@ export default function CreateLabPage() {
 
   // Use a stable ID for the current lab session
   const currentLabIdRef = useRef(labId || Date.now().toString());
+  const savedApiLabIdRef = useRef(labId || null);
 
   // Refs to hold latest values for the auto-save interval (avoids stale closure)
   const latestDataRef = useRef({ form, starterFiles, supportingFiles, labStatus, testCases, solutions });
@@ -114,81 +293,82 @@ export default function CreateLabPage() {
   // Load existing lab when editing
   useEffect(() => {
     if (!isEditing) return;
-    const stored = JSON.parse(localStorage.getItem(LABS_KEY) || "[]");
-    const lab = stored.find((l) => l.id === labId);
-    if (lab) {
-      setForm({
-        labNumber: lab.labNumber || "",
-        title: lab.title || "",
-        instructions: lab.instructions || "",
-        dueDate: lab.dueDate || "",
-        points: lab.points ? String(lab.points) : "",
-        difficulty: lab.difficulty || "medium",
-        languages: lab.languages || [],
-      });
-      setStarterFiles(lab.starterFiles || []);
-      setSupportingFiles(lab.supportingFiles || []);
-      setTestCases(lab.testCases || []);
-      setSolutions(lab.solutions || []);
-      setLabStatus(lab.status || "draft");
-      if (lab.updatedAt) setLastSaved(new Date(lab.updatedAt));
-    }
-  }, [labId, isEditing]);
+    setLabLoading(true);
+    setLabLoadError("");
 
-  const saveToDisk = useCallback(
-    (formData, starter, supporting, status, tcs, sols, silent = false) => {
+    api.get(`/instructor/labs/${labId}`)
+      .then((data) => {
+        const lab = getLabPayload(data);
+        savedApiLabIdRef.current = lab.id || labId;
+        currentLabIdRef.current = lab.id || labId;
+
+        setForm({
+          courseId: lab.courseId || lab.course?.id || lab.courseCode || "",
+          labNumber: lab.labNumber || "",
+          title: lab.title || "",
+          instructions: lab.instructions ?? lab.description ?? "",
+          dueDate: toDateTimeLocalValue(lab.dueDate),
+          points: lab.points ? String(lab.points) : "",
+          difficulty: lab.difficulty || "medium",
+          languages: lab.languages || (lab.language ? [lab.language] : []),
+        });
+        setStarterFiles(lab.starterFiles || []);
+        setSupportingFiles(lab.supportingFiles || []);
+        setTestCases(normalizeTestCasesForEditor(lab.testCases || []));
+        setSolutions(normalizeSolutionsForEditor(lab.solutions || []));
+        setLabStatus(lab.status || "draft");
+        if (lab.updatedAt) setLastSaved(new Date(lab.updatedAt));
+      })
+      .catch((err) => {
+        if (err.status === 401) {
+          navigate("/");
+          return;
+        }
+        setLabLoadError(err.message ?? "Failed to load lab. Please try again.");
+      })
+      .finally(() => setLabLoading(false));
+  }, [labId, isEditing, navigate]);
+
+  const saveLab = useCallback(
+    async (formData, starter, supporting, status, tcs, sols, silent = false) => {
       if (!formData.title && !isEditing) return false;
-      const stored = JSON.parse(localStorage.getItem(LABS_KEY) || "[]");
-      const id = currentLabIdRef.current;
-      const existing = stored.find((l) => l.id === id);
-      const now = new Date().toISOString();
-      const user = getCurrentUser() || {};
 
-      const labObj = {
-        id,
-        labNumber: formData.labNumber,
-        title: formData.title,
-        instructions: formData.instructions,
-        dueDate: formData.dueDate,
-        points: Number.parseInt(formData.points) || 0,
-        difficulty: formData.difficulty,
-        languages: formData.languages,
-        starterFiles: starter,
-        supportingFiles: supporting,
-        testCases: tcs,
-        solutions: sols,
-        status,
-        createdAt: existing ? existing.createdAt : now,
-        updatedAt: now,
-        createdBy: user.email || "",
-      };
+      const payload = buildLabPayload(formData, starter, supporting, tcs, sols);
+      const targetId = savedApiLabIdRef.current || labId;
+      const savedLab = getLabPayload(
+        targetId
+          ? await api.patch(`/instructor/labs/${targetId}`, payload)
+          : await api.post("/instructor/labs", payload),
+      );
 
-      const updated = existing
-        ? stored.map((l) => (l.id === id ? labObj : l))
-        : [...stored, labObj];
-
-      localStorage.setItem(LABS_KEY, JSON.stringify(updated));
-      setLastSaved(new Date());
-      setLabStatus(status);
-      if (!silent) {
-        showToast("success", status === "draft" ? "Lab saved as draft" : "Lab published successfully! Students have been notified.");
+      if (savedLab?.id) {
+        savedApiLabIdRef.current = savedLab.id;
+        currentLabIdRef.current = savedLab.id;
       }
-      return true;
+
+      setLastSaved(savedLab?.updatedAt ? new Date(savedLab.updatedAt) : new Date());
+      setLabStatus(savedLab?.status || status || "draft");
+      if (!silent) showToast("success", "Lab saved as draft");
+      return savedLab || true;
     },
-    [isEditing],
+    [isEditing, labId],
   );
 
   // Auto-save every 2 minutes
   useEffect(() => {
-    const interval = setInterval(() => {
+    const interval = setInterval(async () => {
       const { form: f, starterFiles: sf, supportingFiles: spf, labStatus: ls, testCases: tcs, solutions: sols } =
         latestDataRef.current;
-      if (!f.title) return;
-      saveToDisk(f, sf, spf, ls, tcs, sols, true);
-      showToast("info", "Auto-saved");
+      if (!f.title || (!isEditing && !f.courseId?.trim())) return;
+      try {
+        const saved = await saveLab(f, sf, spf, ls, tcs, sols, true);
+        if (saved) showToast("info", "Auto-saved");
+      } catch {
+        showToast("error", "Auto-save failed");
+      }
     }, AUTO_SAVE_INTERVAL_MS);
     return () => clearInterval(interval);
-  }, [saveToDisk]);
+  }, [isEditing, saveLab]);
 
   const showToast = (type, message) => {
     setToast({ type, message });
@@ -200,6 +380,10 @@ export default function CreateLabPage() {
 
     if (!form.title || form.title.trim().length < 5) {
       errs.title = "Lab title must be at least 5 characters";
+    }
+
+    if (!form.courseId.trim()) {
+      errs.courseId = "Course ID is required";
     }
 
     if (form.dueDate || forPublish) {
@@ -242,10 +426,12 @@ export default function CreateLabPage() {
     return errs;
   };
 
-  const handleSaveDraft = () => {
+  const handleSaveDraft = async () => {
+    setPublishErrors([]);
     const errs = validate(false);
     // For draft: only block on title (min length), points range if provided, file size
     const blockingErrs = {};
+    if (errs.courseId) blockingErrs.courseId = errs.courseId;
     if (errs.title) blockingErrs.title = errs.title;
     if (errs.points) blockingErrs.points = errs.points;
     if (errs.dueDate) blockingErrs.dueDate = errs.dueDate;
@@ -254,10 +440,18 @@ export default function CreateLabPage() {
     setErrors(blockingErrs);
     if (Object.keys(blockingErrs).length > 0) return;
 
-    saveToDisk(form, starterFiles, supportingFiles, "draft", testCases, solutions);
+    setIsSaving(true);
+    try {
+      await saveLab(form, starterFiles, supportingFiles, "draft", testCases, solutions);
+    } catch (err) {
+      showToast("error", err.message ?? "Failed to save lab draft");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handlePublishClick = () => {
+    setPublishErrors([]);
     const errs = validate(true);
     setErrors(errs);
     if (Object.keys(errs).length > 0) {
@@ -267,14 +461,43 @@ export default function CreateLabPage() {
     setShowPublishConfirm(true);
   };
 
-  const confirmPublish = () => {
+  const confirmPublish = async () => {
     setIsPublishing(true);
-    // Simulate network call
-    setTimeout(() => {
-      saveToDisk(form, starterFiles, supportingFiles, "active", testCases, solutions);
+    setPublishErrors([]);
+
+    try {
+      const savedLab = await saveLab(
+        form,
+        starterFiles,
+        supportingFiles,
+        labStatus,
+        testCases,
+        solutions,
+        true,
+      );
+      const targetId = savedLab?.id || savedApiLabIdRef.current || labId;
+      if (!targetId) throw new Error("Save the lab before publishing.");
+
+      const publishedLab = getLabPayload(
+        await api.patch(`/instructor/labs/${targetId}/publish`, { status: "active" }),
+      );
+
+      setLabStatus(publishedLab?.status || "active");
+      setLastSaved(publishedLab?.updatedAt ? new Date(publishedLab.updatedAt) : new Date());
+      showToast("success", "Lab published successfully! Students have been notified.");
       setIsPublishing(false);
       setShowPublishConfirm(false);
-    }, 900);
+    } catch (err) {
+      if (err.status === 400) {
+        setPublishErrors(parseValidationFailures(err.message));
+        setShowPublishConfirm(false);
+        setActiveTab("details");
+        showToast("error", "Publishing failed validation");
+      } else {
+        showToast("error", err.message ?? "Failed to publish lab");
+      }
+      setIsPublishing(false);
+    }
   };
 
   const simulateUpload = (files, type) => {
@@ -349,6 +572,7 @@ export default function CreateLabPage() {
   const setField = (field, value) => {
     setForm((prev) => ({ ...prev, [field]: value }));
     if (errors[field]) setErrors((prev) => ({ ...prev, [field]: null }));
+    if (publishErrors.length > 0) setPublishErrors([]);
   };
 
   const minDateTime = new Date(Date.now() + 24 * 60 * 60 * 1000)
@@ -361,6 +585,41 @@ export default function CreateLabPage() {
   ).toFixed(2);
 
   const statusBadge = STATUS_BADGE[labStatus] || STATUS_BADGE.draft;
+
+  if (labLoading) {
+    return (
+      <InstructorLayout>
+        <div style={{ padding: "48px 32px", color: "#94a3b8", fontSize: 14 }}>
+          Loading lab...
+        </div>
+      </InstructorLayout>
+    );
+  }
+
+  if (labLoadError) {
+    return (
+      <InstructorLayout>
+        <div style={{ padding: "48px 32px" }}>
+          <button
+            onClick={() => navigate("/instructor/labs")}
+            style={{
+              background: "transparent",
+              border: "1px solid #1a2540",
+              borderRadius: 8,
+              color: "#64748b",
+              padding: "6px 12px",
+              cursor: "pointer",
+              fontSize: 13,
+              marginBottom: 16,
+            }}
+          >
+            Back
+          </button>
+          <div style={{ color: "#f87171", fontSize: 14 }}>{labLoadError}</div>
+        </div>
+      </InstructorLayout>
+    );
+  }
 
   // File upload drop zone component
   const DropZone = ({ type, files, dragOver, setDragOver, inputRef }) => (
@@ -599,6 +858,7 @@ export default function CreateLabPage() {
             )}
             <button
               onClick={handleSaveDraft}
+              disabled={isSaving}
               style={{
                 padding: "9px 18px",
                 borderRadius: 9,
@@ -607,7 +867,7 @@ export default function CreateLabPage() {
                 color: "#94a3b8",
                 fontSize: 13,
                 fontWeight: 600,
-                cursor: "pointer",
+                cursor: isSaving ? "wait" : "pointer",
                 transition: "all 0.2s",
               }}
               onMouseEnter={(e) => {
@@ -619,7 +879,7 @@ export default function CreateLabPage() {
                 e.currentTarget.style.color = "#94a3b8";
               }}
             >
-              Save Draft
+              {isSaving ? "Saving..." : "Save Draft"}
             </button>
             <button
               onClick={handlePublishClick}
@@ -699,8 +959,29 @@ export default function CreateLabPage() {
         </div>
 
         {/* Error banners */}
-        {(errors.files || errors.testCases) && (
+        {(errors.files || errors.testCases || publishErrors.length > 0) && (
           <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
+            {publishErrors.length > 0 && (
+              <div
+                style={{
+                  background: "rgba(239,68,68,0.1)",
+                  border: "1px solid rgba(239,68,68,0.25)",
+                  borderRadius: 10,
+                  padding: "10px 14px",
+                  color: "#f87171",
+                  fontSize: 13,
+                }}
+              >
+                <div style={{ fontWeight: 700, marginBottom: 6 }}>
+                  Publish validation failed
+                </div>
+                <ul style={{ margin: 0, paddingLeft: 18 }}>
+                  {publishErrors.map((failure) => (
+                    <li key={failure}>{failure}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
             {errors.files && (
               <div
                 style={{
@@ -761,11 +1042,39 @@ export default function CreateLabPage() {
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "120px 1fr 120px",
+              gridTemplateColumns: "160px 110px 1fr 120px",
               gap: 16,
               marginBottom: 16,
             }}
           >
+            {/* Course ID */}
+            <div>
+              <label style={labelStyle}>
+                Course ID <span style={{ color: "#f87171" }}>*</span>
+              </label>
+              <input
+                type="text"
+                placeholder="course-id"
+                value={form.courseId}
+                onChange={(e) => setField("courseId", e.target.value)}
+                style={{
+                  ...inputStyle,
+                  borderColor: errors.courseId ? "rgba(239,68,68,0.5)" : "#1a2540",
+                }}
+                onFocus={(e) => (e.target.style.borderColor = "#22d3ee")}
+                onBlur={(e) =>
+                  (e.target.style.borderColor = errors.courseId
+                    ? "rgba(239,68,68,0.5)"
+                    : "#1a2540")
+                }
+              />
+              {errors.courseId && (
+                <p style={{ margin: "4px 0 0", fontSize: 11, color: "#f87171" }}>
+                  {errors.courseId}
+                </p>
+              )}
+            </div>
+
             {/* Lab Number */}
             <div>
               <label style={labelStyle}>Lab #</label>
@@ -1151,6 +1460,7 @@ export default function CreateLabPage() {
           </button>
           <button
             onClick={handleSaveDraft}
+            disabled={isSaving}
             style={{
               padding: "10px 20px",
               borderRadius: 9,
@@ -1159,10 +1469,10 @@ export default function CreateLabPage() {
               color: "#94a3b8",
               fontSize: 14,
               fontWeight: 600,
-              cursor: "pointer",
+              cursor: isSaving ? "wait" : "pointer",
             }}
           >
-            Save Draft
+            {isSaving ? "Saving..." : "Save Draft"}
           </button>
           <button
             onClick={handlePublishClick}

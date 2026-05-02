@@ -1,104 +1,7 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import AdminLayout from "../../components/layout/AdminLayout";
-
-// ─── Storage keys ─────────────────────────────────────────────────────────────
-const DEPTS_KEY = "labtrack_departments";
-const USERS_KEY = "users";
-const COURSES_KEY = "labtrack_courses";
-
-// ─── Seed data ────────────────────────────────────────────────────────────────
-const SEED_DEPARTMENTS = [
-  {
-    id: "d1",
-    code: "COE",
-    name: "Computer Engineering",
-    headId: "u1",
-    contactEmail: "coe@kfupm.edu.sa",
-    policies: {
-      latePenaltyPercent: 10,
-      defaultDeadlineTime: "23:59",
-      requireCodeComments: true,
-      allowPeerCollaboration: false,
-      maxGroupSize: 1,
-      plagiarismThreshold: 70,
-    },
-  },
-  {
-    id: "d2",
-    code: "ICS",
-    name: "Information & Computer Science",
-    headId: "u2",
-    contactEmail: "ics@kfupm.edu.sa",
-    policies: {
-      latePenaltyPercent: 15,
-      defaultDeadlineTime: "23:59",
-      requireCodeComments: true,
-      allowPeerCollaboration: true,
-      maxGroupSize: 2,
-      plagiarismThreshold: 75,
-    },
-  },
-  {
-    id: "d3",
-    code: "SWE",
-    name: "Software Engineering",
-    headId: "u3",
-    contactEmail: "swe@kfupm.edu.sa",
-    policies: {
-      latePenaltyPercent: 20,
-      defaultDeadlineTime: "23:59",
-      requireCodeComments: true,
-      allowPeerCollaboration: true,
-      maxGroupSize: 3,
-      plagiarismThreshold: 80,
-    },
-  },
-  {
-    id: "d4",
-    code: "MATH",
-    name: "Mathematics",
-    headId: "u4",
-    contactEmail: "math@kfupm.edu.sa",
-    policies: {
-      latePenaltyPercent: 5,
-      defaultDeadlineTime: "23:59",
-      requireCodeComments: false,
-      allowPeerCollaboration: false,
-      maxGroupSize: 1,
-      plagiarismThreshold: 60,
-    },
-  },
-  {
-    id: "d5",
-    code: "PHYS",
-    name: "Physics",
-    headId: null,
-    contactEmail: "phys@kfupm.edu.sa",
-    policies: {
-      latePenaltyPercent: 10,
-      defaultDeadlineTime: "23:59",
-      requireCodeComments: false,
-      allowPeerCollaboration: false,
-      maxGroupSize: 1,
-      plagiarismThreshold: 65,
-    },
-  },
-  {
-    id: "d6",
-    code: "CHEM",
-    name: "Chemistry",
-    headId: null,
-    contactEmail: "chem@kfupm.edu.sa",
-    policies: {
-      latePenaltyPercent: 10,
-      defaultDeadlineTime: "23:59",
-      requireCodeComments: false,
-      allowPeerCollaboration: false,
-      maxGroupSize: 1,
-      plagiarismThreshold: 65,
-    },
-  },
-];
+import { api } from "../../utils/api.js";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function isValidEmail(email) {
@@ -175,40 +78,35 @@ function SectionTitle({ children }) {
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function DepartmentSettingsPage() {
+  const navigate = useNavigate();
   const [departments, setDepartments] = useState([]);
   const [users, setUsers] = useState([]);
   const [courses, setCourses] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
-  const [editing, setEditing] = useState(null);       // full dept copy being edited
+  const [editing, setEditing] = useState(null);
   const [formErrors, setFormErrors] = useState({});
   const [headSearch, setHeadSearch] = useState("");
   const [headDropdown, setHeadDropdown] = useState(false);
-  const [saveSuccess, setSaveSuccess] = useState(null); // { courseCount }
-  const [toast, setToast] = useState(null);
-
+  const [saveSuccess, setSaveSuccess] = useState(null);
   // ── Load ──
   useEffect(() => {
-    let stored = JSON.parse(localStorage.getItem(DEPTS_KEY) || "[]");
-    if (stored.length === 0) {
-      stored = SEED_DEPARTMENTS;
-      localStorage.setItem(DEPTS_KEY, JSON.stringify(stored));
-    }
-    setDepartments(stored);
-    setUsers(JSON.parse(localStorage.getItem(USERS_KEY) || "[]"));
-    setCourses(JSON.parse(localStorage.getItem(COURSES_KEY) || "[]"));
-  }, []);
+    Promise.all([
+      api.get("/admin/departments"),
+      api.get("/admin/users"),
+      api.get("/admin/courses"),
+    ])
+      .then(([depts, usersData, coursesData]) => {
+        setDepartments(Array.isArray(depts) ? depts : []);
+        setUsers(Array.isArray(usersData) ? usersData : []);
+        setCourses(Array.isArray(coursesData) ? coursesData : []);
+      })
+      .catch((err) => { if (err.status === 401) navigate("/"); else setError(err.message); })
+      .finally(() => setLoading(false));
+  }, [navigate]);
 
   // ── Helpers ──
-  const showToast = (msg, type = "success") => {
-    setToast({ msg, type });
-    setTimeout(() => setToast(null), 3500);
-  };
-
-  const saveDepts = (updated) => {
-    localStorage.setItem(DEPTS_KEY, JSON.stringify(updated));
-    setDepartments(updated);
-  };
-
   const headCandidates = users.filter((u) => u.role === "instructor" || u.role === "admin");
   const filteredHeads = headCandidates.filter(
     (u) => !headSearch || u.fullName.toLowerCase().includes(headSearch.toLowerCase()),
@@ -221,7 +119,7 @@ export default function DepartmentSettingsPage() {
     courses: courses.filter((c) => c.department === deptCode).length,
     students: courses
       .filter((c) => c.department === deptCode)
-      .reduce((n, c) => n + c.sections.reduce((s, sec) => s + sec.enrolledStudentIds.length, 0), 0),
+      .reduce((n, c) => n + (c.sections || []).reduce((s, sec) => s + (sec.enrolledStudentIds || []).length, 0), 0),
   });
 
   // ── Validation ──
@@ -245,14 +143,23 @@ export default function DepartmentSettingsPage() {
   };
 
   // ── Save ──
-  const handleSave = () => {
+  const handleSave = async () => {
     const errs = validate(editing);
     if (Object.keys(errs).length) { setFormErrors(errs); return; }
-
-    const courseCount = courses.filter((c) => c.department === editing.code).length;
-    saveDepts(departments.map((d) => (d.id === editing.id ? { ...editing } : d)));
-    setSaveSuccess({ courseCount });
-    setFormErrors({});
+    try {
+      const updated = await api.patch(`/admin/departments/${editing.id}`, {
+        name: editing.name,
+        contactEmail: editing.contactEmail,
+        headId: editing.headId,
+        policies: editing.policies,
+      });
+      setDepartments((prev) => prev.map((d) => d.id === editing.id ? { ...d, ...updated } : d));
+      const courseCount = courses.filter((c) => c.department === editing.code).length;
+      setSaveSuccess({ courseCount });
+      setFormErrors({});
+    } catch (err) {
+      setFormErrors({ _general: err.message });
+    }
   };
 
   const handleClose = () => {
@@ -277,6 +184,14 @@ export default function DepartmentSettingsPage() {
   };
 
   // ─────────────────────────────────────────────────────────────────────────────
+  if (loading) {
+    return (
+      <AdminLayout>
+        <div style={{ padding: "28px 32px", color: "#94a3b8", fontSize: 14 }}>Loading...</div>
+      </AdminLayout>
+    );
+  }
+
   return (
     <AdminLayout>
       <div style={{ padding: "28px 32px", minHeight: "100%" }}>
@@ -288,6 +203,13 @@ export default function DepartmentSettingsPage() {
             Configure department policies, assign department heads, and manage contact information
           </p>
         </div>
+
+        {/* ── Error ── */}
+        {error && (
+          <div style={{ padding: "12px 16px", background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 10, color: "#f87171", fontSize: 13, marginBottom: 20 }}>
+            {error}
+          </div>
+        )}
 
         {/* ── Stats bar ── */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14, marginBottom: 28 }}>
@@ -313,7 +235,7 @@ export default function DepartmentSettingsPage() {
             const color = DEPT_COLORS[dept.code] || "#94a3b8";
             const head = getUser(dept.headId);
             const stats = deptStats(dept.code);
-            const p = dept.policies;
+            const p = dept.policies || {};
 
             return (
               <div key={dept.id} style={{ background: "#0a1628", border: "1px solid #1a2540", borderRadius: 16, overflow: "hidden" }}>
@@ -369,10 +291,10 @@ export default function DepartmentSettingsPage() {
                 {/* Policy summary */}
                 <div style={{ padding: "12px 20px", display: "flex", flexWrap: "wrap", gap: 6 }}>
                   <span style={{ fontSize: 11, padding: "3px 8px", borderRadius: 6, background: "rgba(239,68,68,0.08)", color: "#f87171", border: "1px solid rgba(239,68,68,0.15)" }}>
-                    {p.latePenaltyPercent}% late penalty
+                    {p.latePenaltyPercent ?? 0}% late penalty
                   </span>
                   <span style={{ fontSize: 11, padding: "3px 8px", borderRadius: 6, background: "rgba(250,204,21,0.08)", color: "#facc15", border: "1px solid rgba(250,204,21,0.15)" }}>
-                    {p.plagiarismThreshold}% plagiarism threshold
+                    {p.plagiarismThreshold ?? 0}% plagiarism threshold
                   </span>
                   {p.requireCodeComments && (
                     <span style={{ fontSize: 11, padding: "3px 8px", borderRadius: 6, background: "rgba(34,211,238,0.08)", color: "#22d3ee", border: "1px solid rgba(34,211,238,0.15)" }}>
@@ -390,13 +312,6 @@ export default function DepartmentSettingsPage() {
           })}
         </div>
       </div>
-
-      {/* ── Toast ── */}
-      {toast && (
-        <div style={{ position: "fixed", bottom: 28, right: 28, padding: "12px 20px", borderRadius: 12, background: toast.type === "success" ? "rgba(34,197,94,0.15)" : "rgba(239,68,68,0.15)", border: `1px solid ${toast.type === "success" ? "rgba(34,197,94,0.3)" : "rgba(239,68,68,0.3)"}`, color: toast.type === "success" ? "#4ade80" : "#f87171", fontSize: 13, fontWeight: 600, zIndex: 100, boxShadow: "0 8px 32px rgba(0,0,0,0.4)" }}>
-          {toast.type === "success" ? "✓ " : "✕ "}{toast.msg}
-        </div>
-      )}
 
       {/* ── Edit Department Modal ── */}
       {editing && (
@@ -416,6 +331,13 @@ export default function DepartmentSettingsPage() {
               </div>
               <button onClick={handleClose} style={{ background: "transparent", border: "none", color: "#475569", fontSize: 22, cursor: "pointer", lineHeight: 1 }}>×</button>
             </div>
+
+            {/* API error banner */}
+            {formErrors._general && (
+              <div style={{ margin: "20px 28px 0", padding: "14px 18px", background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.25)", borderRadius: 10 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "#f87171" }}>{formErrors._general}</div>
+              </div>
+            )}
 
             {/* Success banner */}
             {saveSuccess && (
@@ -602,10 +524,7 @@ export default function DepartmentSettingsPage() {
                 {saveSuccess ? "Close" : "Cancel"}
               </button>
               {!saveSuccess && (
-                <button
-                  onClick={handleSave}
-                  style={btnPrimary}
-                >
+                <button onClick={handleSave} style={btnPrimary}>
                   Save Department Settings
                 </button>
               )}

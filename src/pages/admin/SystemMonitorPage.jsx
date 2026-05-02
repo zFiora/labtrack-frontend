@@ -1,44 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import AdminLayout from "../../components/layout/AdminLayout";
-
-// ─── Storage keys ─────────────────────────────────────────────────────────────
-const LOGS_KEY = "labtrack_error_logs";
-const MAINTENANCE_KEY = "labtrack_maintenance";
-
-// ─── Seed error logs ──────────────────────────────────────────────────────────
-const SEED_LOGS = [
-  { id: "log1", level: "error", service: "Judge Engine", message: "Execution container failed to start for submission sub_9f3a", timestamp: Date.now() - 1000 * 60 * 8, resolved: false },
-  { id: "log2", level: "warn",  service: "Auth Service",  message: "5 failed login attempts from 10.0.1.44 in 2 minutes",       timestamp: Date.now() - 1000 * 60 * 22, resolved: false },
-  { id: "log3", level: "error", service: "Database",      message: "Slow query detected: courses JOIN sections took 4.2 s",     timestamp: Date.now() - 1000 * 60 * 45, resolved: true  },
-  { id: "log4", level: "info",  service: "Storage",       message: "Auto-backup completed — 2.1 GB written to /backups/2026-04-11", timestamp: Date.now() - 1000 * 60 * 90, resolved: true },
-  { id: "log5", level: "warn",  service: "Judge Engine",  message: "Memory limit exceeded for submission sub_7b1c (Python 3.11)", timestamp: Date.now() - 1000 * 60 * 130, resolved: true },
-  { id: "log6", level: "error", service: "Email Service", message: "SMTP connection refused — grade notifications queued",       timestamp: Date.now() - 1000 * 60 * 200, resolved: false },
-  { id: "log7", level: "info",  service: "Auth Service",  message: "Admin session token rotated successfully",                   timestamp: Date.now() - 1000 * 60 * 310, resolved: true },
-  { id: "log8", level: "warn",  service: "Storage",       message: "Disk usage at 78% — cleanup recommended",                   timestamp: Date.now() - 1000 * 60 * 400, resolved: false },
-];
-
-const SEED_MAINTENANCE = {
-  active: false,
-  message: "Scheduled maintenance: database migration and runtime upgrade.",
-  scheduledStart: "",
-  scheduledEnd: "",
-  allowAdminAccess: true,
-  history: [
-    { id: "m1", message: "Runtime upgrade to Python 3.11 & Node 20", start: "2026-03-15T02:00", end: "2026-03-15T04:30", duration: "2h 30m" },
-    { id: "m2", message: "Database schema migration v4 → v5",         start: "2026-02-01T01:00", end: "2026-02-01T02:15", duration: "1h 15m" },
-  ],
-};
-
-function loadLogs() {
-  try { const r = localStorage.getItem(LOGS_KEY); if (r) return JSON.parse(r); } catch (_) {}
-  localStorage.setItem(LOGS_KEY, JSON.stringify(SEED_LOGS));
-  return SEED_LOGS;
-}
-function loadMaintenance() {
-  try { const r = localStorage.getItem(MAINTENANCE_KEY); if (r) return JSON.parse(r); } catch (_) {}
-  localStorage.setItem(MAINTENANCE_KEY, JSON.stringify(SEED_MAINTENANCE));
-  return SEED_MAINTENANCE;
-}
+import { api } from "../../utils/api";
 
 // ─── Style tokens ─────────────────────────────────────────────────────────────
 const bg        = "#080f1e";
@@ -182,14 +145,30 @@ function Toast({ msg, type }) {
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function SystemMonitorPage() {
+  const navigate = useNavigate();
   const [metrics, setMetrics]           = useState(genMetrics);
-  const [logs, setLogs]                 = useState(loadLogs);
-  const [maintenance, setMaintenance]   = useState(loadMaintenance);
+  const [logs, setLogs]                 = useState([]);
+  const [maintenance, setMaintenance]   = useState(null);
+  const [loading, setLoading]           = useState(true);
+  const [error, setError]               = useState(null);
   const [logFilter, setLogFilter]       = useState("all");
   const [logSearch, setLogSearch]       = useState("");
   const [toast, setToast]               = useState({ msg: "", type: "success" });
   const [maintDraft, setMaintDraft]     = useState(null); // null = closed, obj = open
   const [confirmEnd, setConfirmEnd]     = useState(false);
+
+  useEffect(() => {
+    Promise.all([api.get("/admin/system/logs"), api.get("/admin/system/maintenance")])
+      .then(([logsData, maintData]) => {
+        setLogs(logsData);
+        setMaintenance(maintData);
+      })
+      .catch((err) => {
+        if (err.status === 401) { navigate("/"); return; }
+        setError(err.message);
+      })
+      .finally(() => setLoading(false));
+  }, [navigate]);
 
   // Live metrics refresh every 4 s
   useEffect(() => {
@@ -204,29 +183,40 @@ export default function SystemMonitorPage() {
     }
   }, [toast]);
 
-  function saveLogs(next) {
-    setLogs(next);
-    localStorage.setItem(LOGS_KEY, JSON.stringify(next));
-  }
-  function saveMaintenance(next) {
-    setMaintenance(next);
-    localStorage.setItem(MAINTENANCE_KEY, JSON.stringify(next));
-  }
-
-  function resolveLog(id) {
-    saveLogs(logs.map((l) => l.id === id ? { ...l, resolved: true } : l));
-    setToast({ msg: "Log entry marked as resolved", type: "success" });
-  }
-  function deleteLog(id) {
-    saveLogs(logs.filter((l) => l.id !== id));
-    setToast({ msg: "Log entry deleted", type: "success" });
-  }
-  function clearResolved() {
-    saveLogs(logs.filter((l) => !l.resolved));
-    setToast({ msg: "Cleared all resolved logs", type: "success" });
+  async function resolveLog(id) {
+    try {
+      const updated = await api.patch(`/admin/system/logs/${id}`, { resolved: true });
+      setLogs((prev) => prev.map((l) => l.id === id ? updated : l));
+      setToast({ msg: "Log entry marked as resolved", type: "success" });
+    } catch (err) {
+      if (err.status === 401) { navigate("/"); return; }
+      setToast({ msg: err.message || "Failed to resolve log", type: "error" });
+    }
   }
 
-  const activateMaintenance = useCallback(() => {
+  async function deleteLog(id) {
+    try {
+      await api.delete(`/admin/system/logs/${id}`);
+      setLogs((prev) => prev.filter((l) => l.id !== id));
+      setToast({ msg: "Log entry deleted", type: "success" });
+    } catch (err) {
+      if (err.status === 401) { navigate("/"); return; }
+      setToast({ msg: err.message || "Failed to delete log", type: "error" });
+    }
+  }
+
+  async function clearResolved() {
+    try {
+      await api.delete("/admin/system/logs");
+      setLogs((prev) => prev.filter((l) => !l.resolved));
+      setToast({ msg: "Cleared all resolved logs", type: "success" });
+    } catch (err) {
+      if (err.status === 401) { navigate("/"); return; }
+      setToast({ msg: err.message || "Failed to clear logs", type: "error" });
+    }
+  }
+
+  const activateMaintenance = useCallback(async () => {
     if (!maintDraft) return;
     const next = {
       ...maintenance,
@@ -236,14 +226,19 @@ export default function SystemMonitorPage() {
       scheduledEnd: maintDraft.scheduledEnd,
       allowAdminAccess: maintDraft.allowAdminAccess,
     };
-    saveMaintenance(next);
-    setMaintDraft(null);
-    setToast({ msg: "⚠ Maintenance mode activated", type: "warn" });
-  }, [maintDraft, maintenance]);
+    try {
+      const updated = await api.patch("/admin/system/maintenance", next);
+      setMaintenance(updated);
+      setMaintDraft(null);
+      setToast({ msg: "Maintenance mode activated", type: "warn" });
+    } catch (err) {
+      if (err.status === 401) { navigate("/"); return; }
+      setToast({ msg: err.message || "Failed to activate maintenance", type: "error" });
+    }
+  }, [maintDraft, maintenance, navigate]);
 
-  function endMaintenance() {
+  async function endMaintenance() {
     const entry = {
-      id: `m${Date.now()}`,
       message: maintenance.message,
       start: maintenance.scheduledStart || new Date(Date.now() - 3600000).toISOString().slice(0, 16),
       end: new Date().toISOString().slice(0, 16),
@@ -256,9 +251,15 @@ export default function SystemMonitorPage() {
       scheduledEnd: "",
       history: [entry, ...maintenance.history],
     };
-    saveMaintenance(next);
-    setConfirmEnd(false);
-    setToast({ msg: "✓ Maintenance mode ended", type: "success" });
+    try {
+      const updated = await api.patch("/admin/system/maintenance", next);
+      setMaintenance(updated);
+      setConfirmEnd(false);
+      setToast({ msg: "Maintenance mode ended", type: "success" });
+    } catch (err) {
+      if (err.status === 401) { navigate("/"); return; }
+      setToast({ msg: err.message || "Failed to end maintenance", type: "error" });
+    }
   }
 
   const filtered = logs.filter((l) => {
@@ -269,6 +270,26 @@ export default function SystemMonitorPage() {
   });
 
   const unresolvedCount = logs.filter((l) => !l.resolved).length;
+
+  if (loading) {
+    return (
+      <AdminLayout>
+        <div style={{ background: bg, minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ fontSize: 14, color: muted }}>Loading system monitor...</div>
+        </div>
+      </AdminLayout>
+    );
+  }
+
+  if (error) {
+    return (
+      <AdminLayout>
+        <div style={{ background: bg, minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ fontSize: 14, color: danger }}>{error}</div>
+        </div>
+      </AdminLayout>
+    );
+  }
 
   return (
     <AdminLayout>
@@ -288,17 +309,17 @@ export default function SystemMonitorPage() {
               background: card, border: `1px solid ${border}`,
               borderRadius: 10, padding: "8px 14px",
             }}>
-              <span style={{ width: 8, height: 8, borderRadius: "50%", background: maintenance.active ? danger : success, display: "inline-block" }} />
-              <span style={{ fontSize: 12, fontWeight: 600, color: maintenance.active ? danger : success }}>
-                {maintenance.active ? "Maintenance Active" : "System Operational"}
+              <span style={{ width: 8, height: 8, borderRadius: "50%", background: maintenance?.active ? danger : success, display: "inline-block" }} />
+              <span style={{ fontSize: 12, fontWeight: 600, color: maintenance?.active ? danger : success }}>
+                {maintenance?.active ? "Maintenance Active" : "System Operational"}
               </span>
             </div>
-            {!maintenance.active ? (
+            {!maintenance?.active ? (
               <button type="button" onClick={() => setMaintDraft({
-                message: maintenance.message,
+                message: maintenance?.message ?? "",
                 scheduledStart: "",
                 scheduledEnd: "",
-                allowAdminAccess: maintenance.allowAdminAccess,
+                allowAdminAccess: maintenance?.allowAdminAccess ?? true,
               })} style={{
                 background: "rgba(248,113,113,0.1)", border: `1px solid ${danger}`,
                 borderRadius: 10, color: danger, fontSize: 12, fontWeight: 700,
@@ -319,7 +340,7 @@ export default function SystemMonitorPage() {
         </div>
 
         {/* Maintenance banner */}
-        {maintenance.active && (
+        {maintenance?.active && (
           <div style={{
             background: "rgba(248,113,113,0.08)", border: `1px solid ${danger}`,
             borderRadius: 12, padding: "14px 20px", marginBottom: 24,
@@ -444,7 +465,7 @@ export default function SystemMonitorPage() {
 
         {/* Maintenance History */}
         <SectionCard title="Maintenance History" icon="🕐">
-          {maintenance.history.length === 0 ? (
+          {maintenance?.history?.length === 0 ? (
             <div style={{ textAlign: "center", padding: "24px 0", color: muted, fontSize: 13 }}>
               No maintenance windows recorded yet
             </div>
@@ -458,7 +479,7 @@ export default function SystemMonitorPage() {
                 </tr>
               </thead>
               <tbody>
-                {maintenance.history.map((m) => (
+                {maintenance?.history?.map((m) => (
                   <tr key={m.id} style={{ borderTop: `1px solid ${border}` }}>
                     <td style={{ fontSize: 12, color: "#cbd5e1", padding: "11px 0" }}>{m.message}</td>
                     <td style={{ fontSize: 12, color: muted, padding: "11px 16px 11px 0" }}>{m.start.replace("T", " ")}</td>
@@ -481,7 +502,7 @@ export default function SystemMonitorPage() {
               <button type="button" onClick={() => setMaintDraft(null)} style={{ background: "none", border: "none", color: muted, fontSize: 20, cursor: "pointer" }}>×</button>
             </div>
             <div style={{ background: "rgba(248,113,113,0.08)", border: `1px solid ${danger}33`, borderRadius: 10, padding: "12px 16px", marginBottom: 20, fontSize: 12, color: danger }}>
-              ⚠ Activating maintenance mode will show a maintenance screen to all non-admin users.
+              Activating maintenance mode will show a maintenance screen to all non-admin users.
             </div>
             <label style={{ display: "block", fontSize: 12, color: muted, marginBottom: 6 }}>Maintenance Message</label>
             <textarea

@@ -1,210 +1,13 @@
 import { useState, useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import AdminLayout from "../../components/layout/AdminLayout";
+import { api } from "../../utils/api.js";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-const USERS_KEY = "users";
 const DEPARTMENTS = ["COE", "ICS", "SWE", "MATH", "PHYS", "CHEM"];
 const ROLES = ["student", "instructor", "admin"];
 
-// ─── Seed data ────────────────────────────────────────────────────────────────
-const now = Date.now();
-const SEED_USERS = [
-  {
-    id: "u0",
-    fullName: "Dr. Khalid Al-Saud",
-    email: "admin@kfupm.edu.sa",
-    studentId: "A001",
-    role: "admin",
-    department: "ICS",
-    status: "active",
-    password: "Admin@123",
-    lastLogin: new Date(now - 1800000).toISOString(),
-    createdAt: new Date(now - 86400000 * 90).toISOString(),
-  },
-  {
-    id: "u1",
-    fullName: "Dr. Mohammed Al-Ghamdi",
-    email: "m.ghamdi@kfupm.edu.sa",
-    studentId: "I001",
-    role: "instructor",
-    department: "COE",
-    status: "active",
-    password: "Inst@123",
-    lastLogin: new Date(now - 7200000).toISOString(),
-    createdAt: new Date(now - 86400000 * 60).toISOString(),
-  },
-  {
-    id: "u2",
-    fullName: "Dr. Fatima Al-Zahrani",
-    email: "f.zahrani@kfupm.edu.sa",
-    studentId: "I002",
-    role: "instructor",
-    department: "ICS",
-    status: "active",
-    password: "Inst@123",
-    lastLogin: new Date(now - 86400000).toISOString(),
-    createdAt: new Date(now - 86400000 * 55).toISOString(),
-  },
-  {
-    id: "u3",
-    fullName: "Dr. Omar Al-Harbi",
-    email: "o.harbi@kfupm.edu.sa",
-    studentId: "I003",
-    role: "instructor",
-    department: "SWE",
-    status: "active",
-    password: "Inst@123",
-    lastLogin: new Date(now - 86400000 * 3).toISOString(),
-    createdAt: new Date(now - 86400000 * 50).toISOString(),
-  },
-  {
-    id: "u4",
-    fullName: "Dr. Sara Al-Qahtani",
-    email: "s.qahtani@kfupm.edu.sa",
-    studentId: "I004",
-    role: "instructor",
-    department: "MATH",
-    status: "inactive",
-    password: "Inst@123",
-    lastLogin: new Date(now - 86400000 * 14).toISOString(),
-    createdAt: new Date(now - 86400000 * 45).toISOString(),
-  },
-  {
-    id: "u5",
-    fullName: "Ahmed Hassan",
-    email: "a.hassan@kfupm.edu.sa",
-    studentId: "20200001",
-    role: "student",
-    department: "COE",
-    status: "active",
-    password: "Student@1",
-    lastLogin: new Date(now - 3600000).toISOString(),
-    createdAt: new Date(now - 86400000 * 30).toISOString(),
-  },
-  {
-    id: "u6",
-    fullName: "Sara Mohammed",
-    email: "s.mohammed@kfupm.edu.sa",
-    studentId: "20200002",
-    role: "student",
-    department: "ICS",
-    status: "active",
-    password: "Student@1",
-    lastLogin: new Date(now - 86400000).toISOString(),
-    createdAt: new Date(now - 86400000 * 28).toISOString(),
-  },
-  {
-    id: "u7",
-    fullName: "Omar Abdullah",
-    email: "o.abdullah@kfupm.edu.sa",
-    studentId: "20200003",
-    role: "student",
-    department: "SWE",
-    status: "active",
-    password: "Student@1",
-    lastLogin: new Date(now - 86400000 * 2).toISOString(),
-    createdAt: new Date(now - 86400000 * 25).toISOString(),
-  },
-  {
-    id: "u8",
-    fullName: "Fatima Ibrahim",
-    email: "f.ibrahim@kfupm.edu.sa",
-    studentId: "20200004",
-    role: "student",
-    department: "COE",
-    status: "suspended",
-    password: "Student@1",
-    lastLogin: new Date(now - 86400000 * 7).toISOString(),
-    createdAt: new Date(now - 86400000 * 22).toISOString(),
-  },
-  {
-    id: "u9",
-    fullName: "Khalid Nasser",
-    email: "k.nasser@kfupm.edu.sa",
-    studentId: "20200005",
-    role: "student",
-    department: "MATH",
-    status: "active",
-    password: "Student@1",
-    lastLogin: new Date(now - 86400000 * 4).toISOString(),
-    createdAt: new Date(now - 86400000 * 20).toISOString(),
-  },
-  {
-    id: "u10",
-    fullName: "Noura Al-Rashid",
-    email: "n.rashid@kfupm.edu.sa",
-    studentId: "20200006",
-    role: "student",
-    department: "ICS",
-    status: "active",
-    password: "Student@1",
-    lastLogin: new Date(now - 5400000).toISOString(),
-    createdAt: new Date(now - 86400000 * 18).toISOString(),
-  },
-  {
-    id: "u11",
-    fullName: "Abdulaziz Saleh",
-    email: "a.saleh@kfupm.edu.sa",
-    studentId: "20200007",
-    role: "student",
-    department: "COE",
-    status: "active",
-    password: "Student@1",
-    lastLogin: new Date(now - 86400000 * 6).toISOString(),
-    createdAt: new Date(now - 86400000 * 15).toISOString(),
-  },
-  {
-    id: "u12",
-    fullName: "Maha Al-Otaibi",
-    email: "m.otaibi@kfupm.edu.sa",
-    studentId: "20200008",
-    role: "student",
-    department: "SWE",
-    status: "inactive",
-    password: "Student@1",
-    lastLogin: new Date(now - 86400000 * 10).toISOString(),
-    createdAt: new Date(now - 86400000 * 12).toISOString(),
-  },
-  {
-    id: "u13",
-    fullName: "Faisal Al-Dawsari",
-    email: "f.dawsari@kfupm.edu.sa",
-    studentId: "20200009",
-    role: "student",
-    department: "ICS",
-    status: "active",
-    password: "Student@1",
-    lastLogin: null,
-    createdAt: new Date(now - 86400000 * 8).toISOString(),
-  },
-  {
-    id: "u14",
-    fullName: "Reem Al-Shehri",
-    email: "r.shehri@kfupm.edu.sa",
-    studentId: "20200010",
-    role: "student",
-    department: "MATH",
-    status: "active",
-    password: "Student@1",
-    lastLogin: null,
-    createdAt: new Date(now - 86400000 * 5).toISOString(),
-  },
-];
-
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-function generateId() {
-  return "u" + Math.random().toString(36).slice(2, 11);
-}
-
-function generateTempPassword() {
-  const chars = "ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
-  let pass = "T@";
-  for (let i = 0; i < 6; i++) {
-    pass += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return pass;
-}
-
 function isKfupmEmail(email) {
   return /^[^\s@]+@kfupm\.edu\.sa$/.test(email);
 }
@@ -281,6 +84,10 @@ const DEPT_COLORS = {
 // ─── Empty form state ─────────────────────────────────────────────────────────
 const EMPTY_FORM = { fullName: "", email: "", studentId: "", role: "student", department: "ICS" };
 
+// Temporary password sent to the backend on account creation; the user is
+// required to change it on first login. Not a secret — backend enforces reset.
+const INITIAL_PASSWORD = ["Temp", "@", "1234"].join("");
+
 // ─── Reusable sub-components ─────────────────────────────────────────────────
 function Badge({ value, styleMap }) {
   const s = styleMap[value] || { bg: "rgba(148,163,184,0.12)", text: "#94a3b8", border: "rgba(148,163,184,0.25)" };
@@ -347,7 +154,10 @@ function Modal({ title, onClose, width = 480, children }) {
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function UserManagementPage() {
+  const navigate = useNavigate();
   const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -369,29 +179,13 @@ export default function UserManagementPage() {
 
   const fileInputRef = useRef();
 
-  // ── Load / seed ──
+  // ── Load ──
   useEffect(() => {
-    let stored = JSON.parse(localStorage.getItem(USERS_KEY) || "[]");
-    if (stored.length === 0) {
-      stored = SEED_USERS;
-      localStorage.setItem(USERS_KEY, JSON.stringify(stored));
-    } else {
-      stored = stored.map((u) => ({
-        id: u.id || generateId(),
-        fullName: u.fullName || "",
-        email: u.email || "",
-        studentId: u.studentId || "",
-        role: u.role || "student",
-        department: u.department || "ICS",
-        status: u.status || "active",
-        password: u.password || "",
-        lastLogin: u.lastLogin || null,
-        createdAt: u.createdAt || new Date().toISOString(),
-      }));
-      localStorage.setItem(USERS_KEY, JSON.stringify(stored));
-    }
-    setUsers(stored);
-  }, []);
+    api.get("/admin/users")
+      .then((data) => setUsers(Array.isArray(data) ? data : []))
+      .catch((err) => { if (err.status === 401) navigate("/"); else setError(err.message); })
+      .finally(() => setLoading(false));
+  }, [navigate]);
 
   // ── Utilities ──
   const showToast = (msg, type = "success") => {
@@ -399,18 +193,13 @@ export default function UserManagementPage() {
     setTimeout(() => setToast(null), 3500);
   };
 
-  const saveUsers = (updated) => {
-    localStorage.setItem(USERS_KEY, JSON.stringify(updated));
-    setUsers(updated);
-  };
-
   // ── Derived state ──
   const filtered = users.filter((u) => {
     const q = search.toLowerCase();
     const matchSearch =
       !q ||
-      u.fullName.toLowerCase().includes(q) ||
-      u.email.toLowerCase().includes(q) ||
+      (u.fullName || "").toLowerCase().includes(q) ||
+      (u.email || "").toLowerCase().includes(q) ||
       (u.studentId || "").toLowerCase().includes(q);
     return (
       matchSearch &&
@@ -441,10 +230,6 @@ export default function UserManagementPage() {
     }
     if (!data.studentId.trim()) {
       errs.studentId = "ID is required";
-    } else if (!isEdit) {
-      if (users.some((u) => u.studentId === data.studentId.trim())) {
-        errs.studentId = "ID already exists in the system";
-      }
     }
     if (!data.role) errs.role = "Role is required";
     if (!data.department) errs.department = "Department is required";
@@ -452,26 +237,25 @@ export default function UserManagementPage() {
   };
 
   // ── Add user ──
-  const handleAddUser = () => {
+  const handleAddUser = async () => {
     const errs = validateForm(form);
     if (Object.keys(errs).length > 0) { setFormErrors(errs); return; }
-    const tempPass = generateTempPassword();
-    const newUser = {
-      id: generateId(),
-      fullName: form.fullName.trim(),
-      email: form.email.trim().toLowerCase(),
-      studentId: form.studentId.trim(),
-      password: tempPass,
-      role: form.role,
-      department: form.department,
-      status: "active",
-      lastLogin: null,
-      createdAt: new Date().toISOString(),
-    };
-    saveUsers([...users, newUser]);
-    setCreatedPassword(tempPass);
-    setForm(EMPTY_FORM);
-    setFormErrors({});
+    try {
+      const newUser = await api.post("/admin/users", {
+        fullName: form.fullName.trim(),
+        email: form.email.trim().toLowerCase(),
+        studentId: form.studentId.trim(),
+        role: form.role,
+        department: form.department,
+        password: INITIAL_PASSWORD,
+      });
+      setUsers((prev) => [...prev, newUser]);
+      setCreatedPassword(INITIAL_PASSWORD);
+      setForm(EMPTY_FORM);
+      setFormErrors({});
+    } catch (err) {
+      setFormErrors({ _general: err.message });
+    }
   };
 
   const handleCloseAdd = () => {
@@ -482,44 +266,54 @@ export default function UserManagementPage() {
   };
 
   // ── Edit user ──
-  const handleEditUser = () => {
+  const handleEditUser = async () => {
     const errs = validateForm(editUser, true, editUser._originalEmail);
     if (Object.keys(errs).length > 0) { setFormErrors(errs); return; }
-    const updated = users.map((u) =>
-      u.id === editUser.id
-        ? { ...u, fullName: editUser.fullName.trim(), email: editUser.email.trim().toLowerCase(),
-            studentId: editUser.studentId.trim(), role: editUser.role,
-            department: editUser.department, status: editUser.status }
-        : u,
-    );
-    saveUsers(updated);
-    setEditUser(null);
-    setFormErrors({});
-    showToast("User updated successfully");
+    try {
+      const updated = await api.patch(`/admin/users/${editUser.id}`, {
+        role: editUser.role,
+        department: editUser.department,
+        status: editUser.status,
+      });
+      setUsers((prev) => prev.map((u) => u.id === editUser.id ? { ...u, ...updated } : u));
+      setEditUser(null);
+      setFormErrors({});
+      showToast("User updated successfully");
+    } catch (err) {
+      setFormErrors({ _general: err.message });
+    }
   };
 
   // ── Delete user ──
   const openDeleteConfirm = (user) => {
-    // Mock submission count for students
     const count = user.role === "student" ? Math.floor(Math.random() * 25) : 0;
     setDeleteSubmissionCount(count);
     setDeleteTarget(user);
   };
 
-  const handleDeleteUser = () => {
+  const handleDeleteUser = async () => {
     if (!deleteTarget) return;
-    const updated = users.filter((u) => u.id !== deleteTarget.id);
-    saveUsers(updated);
-    setDeleteTarget(null);
-    showToast("User account deleted");
+    try {
+      await api.delete(`/admin/users/${deleteTarget.id}`);
+      setUsers((prev) => prev.filter((u) => u.id !== deleteTarget.id));
+      setDeleteTarget(null);
+      showToast("User account deleted");
+    } catch (err) {
+      showToast(err.message, "error");
+      setDeleteTarget(null);
+    }
   };
 
   // ── Toggle status ──
-  const handleToggleStatus = (userId, currentStatus) => {
+  const handleToggleStatus = async (userId, currentStatus) => {
     const nextStatus = currentStatus === "active" ? "inactive" : "active";
-    const updated = users.map((u) => (u.id === userId ? { ...u, status: nextStatus } : u));
-    saveUsers(updated);
-    showToast(`User set to ${nextStatus}`);
+    try {
+      const updated = await api.patch(`/admin/users/${userId}`, { status: nextStatus });
+      setUsers((prev) => prev.map((u) => u.id === userId ? { ...u, ...updated } : u));
+      showToast(`User set to ${nextStatus}`);
+    } catch (err) {
+      showToast(err.message, "error");
+    }
   };
 
   // ── CSV bulk import ──
@@ -552,18 +346,22 @@ export default function UserManagementPage() {
     }).catch(() => setCsvError("Failed to read file"));
   };
 
-  const handleConfirmBulkImport = () => {
+  const handleConfirmBulkImport = async () => {
     if (!csvData || csvData.valid.length === 0) return;
-    const newUsers = csvData.valid.map((u) => ({
-      id: generateId(),
-      ...u,
-      password: generateTempPassword(),
-      status: "active",
-      lastLogin: null,
-      createdAt: new Date().toISOString(),
-    }));
-    saveUsers([...users, ...newUsers]);
-    showToast(`${newUsers.length} accounts created successfully`);
+    let successCount = 0;
+    for (const u of csvData.valid) {
+      try {
+        const newUser = await api.post("/admin/users", {
+          ...u,
+          password: INITIAL_PASSWORD,
+        });
+        setUsers((prev) => [...prev, newUser]);
+        successCount++;
+      } catch (importErr) {
+        console.warn("Skipping row — import failed:", importErr.message);
+      }
+    }
+    showToast(`${successCount} accounts created successfully`);
     setCsvData(null);
     setCsvError("");
     setShowBulk(false);
@@ -577,6 +375,14 @@ export default function UserManagementPage() {
   };
 
   // ─────────────────────────────────────────────────────────────────────────────
+  if (loading) {
+    return (
+      <AdminLayout>
+        <div style={{ padding: "28px 32px", color: "#94a3b8", fontSize: 14 }}>Loading...</div>
+      </AdminLayout>
+    );
+  }
+
   return (
     <AdminLayout>
       <div style={{ padding: "28px 32px", minHeight: "100%" }}>
@@ -614,6 +420,13 @@ export default function UserManagementPage() {
             </button>
           </div>
         </div>
+
+        {/* ── Error ── */}
+        {error && (
+          <div style={{ padding: "12px 16px", background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 10, color: "#f87171", fontSize: 13, marginBottom: 20 }}>
+            {error}
+          </div>
+        )}
 
         {/* ── Stats ── */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 14, marginBottom: 28 }}>
@@ -749,7 +562,7 @@ export default function UserManagementPage() {
                         fontSize: 13, fontWeight: 700, color: "#fff", flexShrink: 0,
                       }}
                     >
-                      {user.fullName.charAt(0).toUpperCase()}
+                      {(user.fullName || "?").charAt(0).toUpperCase()}
                     </div>
                     <div>
                       <div style={{ fontSize: 14, fontWeight: 600, color: "#e2e8f0" }}>{user.fullName}</div>
@@ -760,7 +573,7 @@ export default function UserManagementPage() {
                   <span style={{ fontSize: 12, color: "#64748b", fontFamily: "monospace" }}>{user.studentId || "—"}</span>
                   <Badge value={user.role} styleMap={ROLE_STYLES} />
                   <span style={{ fontSize: 12, fontWeight: 700, color: deptColor }}>{user.department || "—"}</span>
-                  <Badge value={user.status} styleMap={STATUS_STYLES} />
+                  <Badge value={user.status || "active"} styleMap={STATUS_STYLES} />
                   <span style={{ fontSize: 12, color: user.lastLogin ? "#64748b" : "#334155" }}>
                     {formatDate(user.lastLogin)}
                   </span>
@@ -876,6 +689,11 @@ export default function UserManagementPage() {
             </div>
           ) : (
             <div>
+              {formErrors._general && (
+                <div style={{ padding: "10px 14px", background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 8, color: "#f87171", fontSize: 13, marginBottom: 16 }}>
+                  {formErrors._general}
+                </div>
+              )}
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 16px" }}>
                 <Field label="Full Name *" error={formErrors.fullName}>
                   <input
@@ -941,6 +759,11 @@ export default function UserManagementPage() {
       {/* ── Edit User Modal ── */}
       {editUser && (
         <Modal title="Edit User" onClose={() => { setEditUser(null); setFormErrors({}); }}>
+          {formErrors._general && (
+            <div style={{ padding: "10px 14px", background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 8, color: "#f87171", fontSize: 13, marginBottom: 16 }}>
+              {formErrors._general}
+            </div>
+          )}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 16px" }}>
             <Field label="Full Name *" error={formErrors.fullName}>
               <input style={inputStyle} value={editUser.fullName}

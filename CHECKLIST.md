@@ -267,7 +267,7 @@ uses it. This prevents 37 pages from each doing it manually.
 
 ### File: `src/pages/instructor/LabsManagementPage.jsx`
 
-- [ ] **4.1 — Replace localStorage with API**
+- [x] **4.1 — Replace localStorage with API**
   - Call `api.get("/instructor/labs")` on mount
   - Support filter by status with `?status=draft|active|closed`
   - Remove all `localStorage.getItem("labtrack_instructor_labs")` calls
@@ -276,16 +276,16 @@ uses it. This prevents 37 pages from each doing it manually.
 
 ### File: `src/pages/instructor/CreateLabPage.jsx`
 
-- [ ] **4.2 — Create lab via API**
+- [x] **4.2 — Create lab via API**
   - Call `api.post("/instructor/labs", { courseId, labNumber, title, instructions, dueDate, points, difficulty, languages, starterCode, testCases, solutions })`
   - Note: field name is `instructions` in backend (not `description`)
   - Lab is created as `"draft"` automatically
 
-- [ ] **4.3 — Edit lab via API**
+- [x] **4.3 — Edit lab via API**
   - Load existing lab: `api.get("/instructor/labs/:labId")` (via `/instructor/labs` list)
   - Save edits: `api.patch("/instructor/labs/:labId", { ...changedFields })`
 
-- [ ] **4.4 — Publish lab via API**
+- [x] **4.4 — Publish lab via API**
   - Call `api.patch("/instructor/labs/:labId/publish", { status: "active" })`
   - On 400 → display the list of validation failures from the response message
   - Remove localStorage save logic
@@ -294,7 +294,7 @@ uses it. This prevents 37 pages from each doing it manually.
 
 ### File: `src/pages/instructor/SubmissionsPage.jsx`
 
-- [ ] **4.5 — Load submissions from API**
+- [x] **4.5 — Load submissions from API**
   - Call `api.get("/instructor/labs/:labId/submissions")`
   - Returns array of submissions with full student details
   - Remove the 12-student mock seed logic
@@ -305,12 +305,12 @@ uses it. This prevents 37 pages from each doing it manually.
 
 ### File: `src/pages/instructor/GradingPage.jsx`
 
-- [ ] **4.6 — Load submission from API**
+- [x] **4.6 — Load submission from API**
   - Get `subId` from route params
   - Call `api.get("/instructor/labs/:labId/submissions")` and find by subId
     OR keep a state-passing approach from SubmissionsPage (navigation state)
 
-- [ ] **4.7 — Submit grade via API**
+- [x] **4.7 — Submit grade via API**
   - Call `api.patch("/instructor/submissions/:subId/grade", { score, rubric: { comments, style, efficiency }, inlineComments, overallFeedback, status: "graded" })`
   - Remove localStorage grade write logic
 
@@ -318,7 +318,7 @@ uses it. This prevents 37 pages from each doing it manually.
 
 ### File: `src/pages/instructor/BulkGradePanel.jsx`
 
-- [ ] **4.8 — Wire bulk grade to API**
+- [x] **4.8 — Wire bulk grade to API**
   - Call `api.post("/instructor/submissions/bulk-grade", { updates: [ { subId, score, feedback } ] })`
   - Remove localStorage logic
 
@@ -326,7 +326,7 @@ uses it. This prevents 37 pages from each doing it manually.
 
 ### File: `src/pages/instructor/AnalyticsPage.jsx`
 
-- [ ] **4.9 — Load analytics from API**
+- [x] **4.9 — Load analytics from API**
   - Call `api.get("/instructor/labs/:labId/analytics")`
   - Returns: `{ stats, distribution, timeline, topSubmitters }`
   - Remove localStorage computation logic
@@ -335,18 +335,18 @@ uses it. This prevents 37 pages from each doing it manually.
 
 ### File: `src/pages/instructor/PlagiarismPage.jsx`
 
-- [ ] **4.10 — Trigger plagiarism check**
+- [x] **4.10 — Trigger plagiarism check**
   - Call `api.post("/instructor/labs/:labId/check-plagiarism")` to run analysis
   - Call `api.get("/instructor/labs/:labId/plagiarism")` to load existing results
 
-- [ ] **4.11 — Update flagged pairs**
+- [x] **4.11 — Update flagged pairs**
   - Call `api.patch("/instructor/labs/:labId/plagiarism/:pairKey", { flagged: true|false })`
 
 ---
 
 ### Files: `src/pages/instructor/SolutionsTab.jsx`, `src/pages/instructor/TestCasesTab.jsx`
 
-- [ ] **4.12 — These are sub-components of CreateLabPage**
+- [x] **4.12 — These are sub-components of CreateLabPage**
   - Wire test cases to be saved as part of `POST /api/instructor/labs` body
   - Wire solutions similarly — they are part of the lab creation payload
   - No separate endpoints — they are embedded in the lab object

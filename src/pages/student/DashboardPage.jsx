@@ -66,12 +66,34 @@ export default function DashboardPage() {
   const navigate = useNavigate();
   const [data, setData]       = useState(null);
   const [error, setError]     = useState(null);
+  const [refresh, setRefresh]     = useState(0);
+  const [joinModal, setJoinModal] = useState(false);
+  const [joinCode, setJoinCode]   = useState("");
+  const [joinError, setJoinError] = useState("");
+  const [joining, setJoining]     = useState(false);
+
+  const handleJoin = async (e) => {
+    e.preventDefault();
+    setJoinError("");
+    setJoining(true);
+    try {
+      await api.post("/student/courses/join", { joinCode: joinCode.trim().toUpperCase() });
+      setJoinModal(false);
+      setJoinCode("");
+      setRefresh((r) => r + 1);
+    } catch (err) {
+      setJoinError(err.message ?? "Invalid join code. Please try again.");
+    } finally {
+      setJoining(false);
+    }
+  };
 
   useEffect(() => {
     const user = getCurrentUser();
     if (!user) { navigate("/"); return; }
 
     Promise.all([
+      // refresh is a counter that re-triggers this effect after a successful join
       api.get("/student/labs?status=active"),
       api.get("/student/grades"),
       api.get("/student/courses?enrolled=true"),
@@ -145,7 +167,7 @@ export default function DashboardPage() {
         if (err.status === 401) { navigate("/"); return; }
         setError("Failed to load dashboard. Please refresh.");
       });
-  }, [navigate]);
+  }, [navigate, refresh]);
 
   if (error) {
     return (
@@ -257,32 +279,48 @@ export default function DashboardPage() {
             )}
 
             {/* Enrolled courses */}
-            {courseStats.length > 0 && (
-              <>
-                <h2 className="text-2xl font-semibold text-white pt-2">My Courses</h2>
-                {courseStats.map((c) => {
-                  const pct = c.total > 0 ? Math.round((c.done / c.total) * 100) : 0;
-                  return (
-                    <div key={c.id} className="rounded-3xl bg-[#1a2238] p-6 shadow-sm">
-                      <div className="flex items-start justify-between mb-4">
-                        <div>
-                          <div className="text-lg font-semibold text-white">{c.courseCode} — {c.name}</div>
-                          <div className="text-sm text-gray-400 mt-1">{c.department} · {c.creditHours} credit hrs</div>
-                        </div>
-                        <span className="text-sm font-bold text-cyan-400">{c.done}/{c.total} labs</span>
-                      </div>
-                      <div className="mb-2 flex justify-between text-sm text-gray-400">
-                        <span>Completion</span>
-                        <span>{pct}%</span>
-                      </div>
-                      <div className="h-2 w-full rounded-full bg-[#0f172a]">
-                        <div className={`h-2 rounded-full ${progressBarColor(pct)}`} style={{ width: `${pct}%` }} />
-                      </div>
+            <div className="flex items-center justify-between pt-2">
+              <h2 className="text-2xl font-semibold text-white">My Courses</h2>
+              <button
+                onClick={() => { setJoinModal(true); setJoinError(""); setJoinCode(""); }}
+                className="text-sm font-semibold text-cyan-400 hover:text-cyan-300"
+              >
+                + Join Course
+              </button>
+            </div>
+
+            {courseStats.length === 0 ? (
+              <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 20, padding: "32px 24px", textAlign: "center" }}>
+                <div style={{ fontSize: 28, marginBottom: 10 }}>📚</div>
+                <div style={{ fontSize: 14, color: muted, marginBottom: 16 }}>You haven't joined any courses yet.</div>
+                <button
+                  onClick={() => { setJoinModal(true); setJoinError(""); setJoinCode(""); }}
+                  className="rounded-full bg-cyan-400 px-5 py-2 text-sm font-semibold text-[#0b1220] hover:bg-cyan-300"
+                >
+                  Join a Course
+                </button>
+              </div>
+            ) : courseStats.map((c) => {
+              const pct = c.total > 0 ? Math.round((c.done / c.total) * 100) : 0;
+              return (
+                <div key={c.id} className="rounded-3xl bg-[#1a2238] p-6 shadow-sm">
+                  <div className="flex items-start justify-between mb-4">
+                    <div>
+                      <div className="text-lg font-semibold text-white">{c.courseCode} — {c.name}</div>
+                      <div className="text-sm text-gray-400 mt-1">{c.department} · {c.creditHours} credit hrs</div>
                     </div>
-                  );
-                })}
-              </>
-            )}
+                    <span className="text-sm font-bold text-cyan-400">{c.done}/{c.total} labs</span>
+                  </div>
+                  <div className="mb-2 flex justify-between text-sm text-gray-400">
+                    <span>Completion</span>
+                    <span>{pct}%</span>
+                  </div>
+                  <div className="h-2 w-full rounded-full bg-[#0f172a]">
+                    <div className={`h-2 rounded-full ${progressBarColor(pct)}`} style={{ width: `${pct}%` }} />
+                  </div>
+                </div>
+              );
+            })}
           </div>
 
           {/* Right: Recent activity */}
@@ -308,6 +346,49 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
+
+      {/* Join Course Modal */}
+      {joinModal && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50 }}>
+          <div style={{ background: "#0f1b33", border: "1px solid #1e3a5f", borderRadius: 16, padding: 32, width: 380 }}>
+            <h3 style={{ color: "#e2e8f0", margin: "0 0 8px", fontSize: 18, fontWeight: 700 }}>Join a Course</h3>
+            <p style={{ color: "#64748b", margin: "0 0 20px", fontSize: 13 }}>Enter the join code your instructor gave you.</p>
+
+            {joinError && (
+              <div style={{ marginBottom: 14, padding: "10px 14px", borderRadius: 8, background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.25)", color: "#f87171", fontSize: 13 }}>
+                {joinError}
+              </div>
+            )}
+
+            <form onSubmit={handleJoin}>
+              <input
+                autoFocus
+                value={joinCode}
+                onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+                placeholder="e.g. X7K2QP"
+                maxLength={8}
+                style={{ width: "100%", padding: "12px 14px", background: "#0a1628", border: "1px solid #1e3a5f", borderRadius: 10, color: "#22d3ee", fontSize: 22, fontWeight: 800, letterSpacing: "0.2em", textAlign: "center", outline: "none", boxSizing: "border-box", marginBottom: 20, fontFamily: "monospace" }}
+              />
+              <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+                <button
+                  type="button"
+                  onClick={() => setJoinModal(false)}
+                  style={{ padding: "9px 20px", borderRadius: 9, border: "1px solid #1e3a5f", background: "transparent", color: "#94a3b8", fontSize: 14, cursor: "pointer", fontWeight: 600 }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={joining || joinCode.trim().length === 0}
+                  style={{ padding: "9px 24px", borderRadius: 9, border: "none", background: "linear-gradient(135deg, #06b6d4, #0891b2)", color: "#fff", fontSize: 14, cursor: joining ? "not-allowed" : "pointer", fontWeight: 600, opacity: joining ? 0.7 : 1 }}
+                >
+                  {joining ? "Joining…" : "Join"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </DashboardLayout>
   );
 }

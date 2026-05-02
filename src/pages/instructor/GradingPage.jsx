@@ -1,9 +1,7 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import InstructorLayout from "../../components/layout/InstructorLayout";
-
-const LABS_KEY   = "labtrack_instructor_labs";
-const SUBS_KEY   = "labtrack_submissions";
+import { api } from "../../utils/api.js";
 
 // ── Rubric definition ────────────────────────────────────────────────────────
 const RUBRIC_CRITERIA = [
@@ -20,6 +18,80 @@ function fmtDateTime(iso) {
     month: "short", day: "numeric",
     hour: "2-digit", minute: "2-digit",
   });
+}
+
+function getLabPayload(data) {
+  return data?.lab ?? data;
+}
+
+function getSubmissionsPayload(data) {
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data?.submissions)) return data.submissions;
+  if (Array.isArray(data?.items)) return data.items;
+  return [];
+}
+
+function getSubmissionPayload(data) {
+  return data?.submission ?? data;
+}
+
+function isSameSubmission(submission, subId) {
+  return [submission?.id, submission?.submissionId].some((id) => String(id) === String(subId));
+}
+
+function normalizeTestResult(result, index) {
+  return {
+    ...result,
+    id: result.id || result.testCaseId || `test-${index + 1}`,
+    description: result.description || result.name || `Test ${index + 1}`,
+    points: result.points ?? result.maxPoints ?? 0,
+    earned: result.earned ?? result.earnedPoints ?? 0,
+  };
+}
+
+function getSubmissionCode(submission) {
+  if (submission.code) return submission.code;
+  if (submission.fileContents) return submission.fileContents;
+  if (submission.files && typeof submission.files === "object") {
+    return Object.entries(submission.files)
+      .map(([name, content]) => `// ${name}\n${content}`)
+      .join("\n\n");
+  }
+  return "";
+}
+
+function normalizeSubmission(submission, lab) {
+  const student = submission.student || submission.studentDetails || {};
+  const submittedAt = submission.submittedAt || null;
+  const late =
+    submission.late ??
+    (!!submittedAt && !!lab?.dueDate && new Date(submittedAt) > new Date(lab.dueDate));
+
+  return {
+    ...submission,
+    id: submission.id || submission.submissionId,
+    labId: submission.labId || lab?.id,
+    studentId: submission.studentId || student.id,
+    studentName:
+      submission.studentName ||
+      student.fullName ||
+      student.name ||
+      submission.studentEmail ||
+      "Student",
+    studentEmail: submission.studentEmail || student.email || "",
+    status: submission.status || "not_started",
+    submittedAt,
+    score: submission.score ?? null,
+    maxScore: submission.maxScore || lab?.points || 100,
+    late,
+    language: submission.language || lab?.language || lab?.languages?.[0] || "",
+    code: getSubmissionCode(submission),
+    testResults: (submission.testResults || []).map(normalizeTestResult),
+    rubric: submission.rubric || { comments: null, style: null, efficiency: null },
+    inlineComments: submission.inlineComments || {},
+    overallFeedback: submission.overallFeedback || submission.feedback || "",
+    gradedAt: submission.gradedAt || null,
+  };
 }
 
 function ScoreDots({ value, max, onChange }) {
@@ -67,31 +139,75 @@ export default function GradingPage() {
   const [errors, setErrors]     = useState({});
   const [saved, setSaved]       = useState(false);
   const [isDirty, setIsDirty]   = useState(false);
+  const [loading, setLoading]   = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [saving, setSaving]     = useState(false);
   const [toast, setToast]       = useState(null);
   const commentInputRef = useRef(null);
+  const hasHydratedRef = useRef(false);
+  const suppressDirtyRef = useRef(false);
 
   // ── Load data ──────────────────────────────────────────────────────────────
-  useEffect(() => {
-    const labs  = JSON.parse(localStorage.getItem(LABS_KEY) || "[]");
-    const found = labs.find((l) => l.id === labId);
-    setLab(found || null);
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    setLoadError("");
+    hasHydratedRef.current = false;
+    suppressDirtyRef.current = true;
 
-    const allData = JSON.parse(localStorage.getItem(SUBS_KEY) || "{}");
-    const labSubs = Object.values(allData[labId] || {});
-    setAllSubs(labSubs);
+    try {
+      const [labData, submissionsData] = await Promise.all([
+        api.get(`/instructor/labs/${labId}`),
+        api.get(`/instructor/labs/${labId}/submissions`),
+      ]);
 
-    const s = labSubs.find((x) => x.id === subId);
-    if (s) {
-      setSub(s);
-      setRubric(s.rubric || { comments: null, style: null, efficiency: null });
-      setInlineComments(s.inlineComments || {});
-      setFeedback(s.overallFeedback || "");
-      if (s.status === "graded") setSaved(true);
+      const nextLab = getLabPayload(labData);
+      const labSubs = getSubmissionsPayload(submissionsData).map((submission) =>
+        normalizeSubmission(submission, nextLab),
+      );
+      const nextSub = labSubs.find((submission) => isSameSubmission(submission, subId));
+
+      setLab(nextLab);
+      setAllSubs(labSubs);
+      setSub(nextSub || null);
+      setRubric(nextSub?.rubric || { comments: null, style: null, efficiency: null });
+      setInlineComments(nextSub?.inlineComments || {});
+      setFeedback(nextSub?.overallFeedback || "");
+      setErrors({});
+      setSaved(nextSub?.status === "graded");
+      setIsDirty(false);
+      hasHydratedRef.current = true;
+
+      if (!nextSub) {
+        setLoadError("Submission not found.");
+      }
+    } catch (err) {
+      if (err.status === 401) {
+        navigate("/");
+        return;
+      }
+      setLab(null);
+      setSub(null);
+      setAllSubs([]);
+      setLoadError(err.message ?? "Failed to load submission. Please try again.");
+    } finally {
+      setLoading(false);
     }
-  }, [labId, subId]);
+  }, [labId, subId, navigate]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   // Mark dirty on rubric/feedback changes
-  useEffect(() => { setIsDirty(true); setSaved(false); }, [rubric, feedback, inlineComments]);
+  useEffect(() => {
+    if (!hasHydratedRef.current) return;
+    if (suppressDirtyRef.current) {
+      suppressDirtyRef.current = false;
+      return;
+    }
+    setIsDirty(true);
+    setSaved(false);
+  }, [rubric, feedback, inlineComments]);
 
   // ── Derived scores ─────────────────────────────────────────────────────────
   const autoScore = sub?.testResults
@@ -156,7 +272,9 @@ export default function GradingPage() {
   };
 
   // ── Save grade ─────────────────────────────────────────────────────────────
-  const handleSave = () => {
+  const handleSave = async () => {
+    if (saving || !sub) return;
+
     const errs = validate();
     setErrors(errs);
     if (Object.keys(errs).length > 0) {
@@ -164,36 +282,58 @@ export default function GradingPage() {
       return;
     }
 
-    const allData  = JSON.parse(localStorage.getItem(SUBS_KEY) || "{}");
-    const updated  = {
-      ...allData[labId][sub.studentId],
+    const payload = {
       score: totalScore,
-      maxScore: labPoints,
-      rubric,
+      rubric: {
+        comments: rubric.comments,
+        style: rubric.style,
+        efficiency: rubric.efficiency,
+      },
       inlineComments,
       overallFeedback: feedback.trim(),
       status: "graded",
-      gradedAt: new Date().toISOString(),
     };
-    allData[labId][sub.studentId] = updated;
-    localStorage.setItem(SUBS_KEY, JSON.stringify(allData));
 
-    setSub(updated);
-    setSaved(true);
-    setIsDirty(false);
-    showToast("success", "Grade saved successfully · Student notified via email");
+    setSaving(true);
 
-    // Auto-navigate to next ungraded after short delay
-    setTimeout(() => {
+    try {
+      const response = await api.patch(`/instructor/submissions/${subId}/grade`, payload);
+      const fallback = {
+        ...sub,
+        ...payload,
+        maxScore: labPoints,
+        gradedAt: new Date().toISOString(),
+      };
+      const savedSub = normalizeSubmission(getSubmissionPayload(response) || fallback, lab);
       const remaining = allSubs.filter(
         (s) => s.status === "submitted" && s.id !== subId,
       );
-      if (remaining.length > 0) {
-        navigate(`/instructor/labs/${labId}/submissions/${remaining[0].id}/grade`);
-      } else {
-        showToast("success", "All submissions graded! ✓");
+
+      setSub(savedSub);
+      setAllSubs((prev) => prev.map((item) => (
+        isSameSubmission(item, savedSub.id) ? savedSub : item
+      )));
+      setSaved(true);
+      setIsDirty(false);
+      showToast("success", "Grade saved successfully · Student notified via email");
+
+      // Auto-navigate to next ungraded after short delay
+      setTimeout(() => {
+        if (remaining.length > 0) {
+          navigate(`/instructor/labs/${labId}/submissions/${remaining[0].id}/grade`);
+        } else {
+          showToast("success", "All submissions graded! ✓");
+        }
+      }, 2000);
+    } catch (err) {
+      if (err.status === 401) {
+        navigate("/");
+        return;
       }
-    }, 2000);
+      showToast("error", err.message ?? "Failed to save grade. Please try again.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   // ── Toast ──────────────────────────────────────────────────────────────────
@@ -214,6 +354,26 @@ export default function GradingPage() {
     }
     navigate(`/instructor/labs/${labId}/submissions/${s.id}/grade`);
   };
+
+  if (loading) {
+    return (
+      <InstructorLayout>
+        <div style={{ padding: 48, textAlign: "center", color: "#64748b" }}>
+          Loading submission...
+        </div>
+      </InstructorLayout>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <InstructorLayout>
+        <div style={{ padding: 48, textAlign: "center", color: "#f87171" }}>
+          {loadError}
+        </div>
+      </InstructorLayout>
+    );
+  }
 
   if (!lab || !sub) {
     return (
@@ -306,15 +466,16 @@ export default function GradingPage() {
             </button>
             <button
               onClick={handleSave}
+              disabled={saving}
               style={{
                 padding: "8px 20px", borderRadius: 9, border: "none",
-                background: rubricFilled ? "linear-gradient(135deg,#06b6d4,#0891b2)" : "#0e2a45",
-                color: rubricFilled ? "#fff" : "#334155",
-                fontSize: 13, fontWeight: 700, cursor: rubricFilled ? "pointer" : "default",
-                boxShadow: rubricFilled ? "0 4px 14px rgba(6,182,212,0.3)" : "none",
+                background: rubricFilled && !saving ? "linear-gradient(135deg,#06b6d4,#0891b2)" : "#0e2a45",
+                color: rubricFilled && !saving ? "#fff" : "#334155",
+                fontSize: 13, fontWeight: 700, cursor: rubricFilled && !saving ? "pointer" : "default",
+                boxShadow: rubricFilled && !saving ? "0 4px 14px rgba(6,182,212,0.3)" : "none",
               }}
             >
-              Save Grade
+              {saving ? "Saving..." : "Save Grade"}
             </button>
           </div>
         </div>
@@ -496,18 +657,19 @@ export default function GradingPage() {
             {/* Save button */}
             <button
               onClick={handleSave}
+              disabled={saving}
               style={{
                 padding: "12px", borderRadius: 10, border: "none",
-                background: rubricFilled && feedback.trim().length >= 20
+                background: rubricFilled && feedback.trim().length >= 20 && !saving
                   ? "linear-gradient(135deg,#06b6d4,#0891b2)"
                   : "#0e2a45",
-                color: rubricFilled && feedback.trim().length >= 20 ? "#fff" : "#334155",
+                color: rubricFilled && feedback.trim().length >= 20 && !saving ? "#fff" : "#334155",
                 fontSize: 14, fontWeight: 700,
-                cursor: rubricFilled && feedback.trim().length >= 20 ? "pointer" : "default",
-                boxShadow: rubricFilled && feedback.trim().length >= 20 ? "0 4px 14px rgba(6,182,212,0.3)" : "none",
+                cursor: rubricFilled && feedback.trim().length >= 20 && !saving ? "pointer" : "default",
+                boxShadow: rubricFilled && feedback.trim().length >= 20 && !saving ? "0 4px 14px rgba(6,182,212,0.3)" : "none",
               }}
             >
-              Save Grade
+              {saving ? "Saving..." : "Save Grade"}
             </button>
           </div>
 
