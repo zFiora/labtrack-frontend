@@ -72,9 +72,10 @@ Each member was responsible for implementing specific features and pages aligned
 
 ## Contribution Note
 
-Some of Haidar AlDahan’s commits were made using a different GitHub email (`haider.r.aldahan@gmail.com`).  
-As a result, part of the contribution history may not be accurately reflected under the main account.
----
+Backend route development :
+Saif Alsadah & Muhannad Almelaifi
+Connecting frontend to backend with APIs:
+Haidar AlDahan & Hassan Al Henedi
 
 ## Notes
 
