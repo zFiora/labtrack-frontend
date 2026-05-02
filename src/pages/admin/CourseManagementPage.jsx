@@ -12,17 +12,54 @@ const DAYS_LIST = ["Sun", "Mon", "Tue", "Wed", "Thu"];
 function formatTime(t) {
   if (!t) return "—";
   const [h, m] = t.split(":").map(Number);
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return t;
   const ampm = h >= 12 ? "PM" : "AM";
   const hour = h > 12 ? h - 12 : h === 0 ? 12 : h;
   return `${hour}:${m.toString().padStart(2, "0")} ${ampm}`;
 }
 
+function parseMeetingSchedule(value) {
+  const raw = Array.isArray(value) ? value.join("/") : String(value || "").trim();
+  if (!raw) return { days: [], startTime: "", endTime: "" };
+  const match = raw.match(/^(.*?)\s+(\d{1,2}:\d{2})\s*[-–]\s*(\d{1,2}:\d{2})$/);
+  const daysPart = match ? match[1] : raw;
+  return {
+    days: daysPart.split(/[,\s/]+/).map((day) => day.trim()).filter(Boolean),
+    startTime: match?.[2] || "",
+    endTime: match?.[3] || "",
+  };
+}
+
+function sectionDays(section) {
+  if (Array.isArray(section?.meetingDays)) return section.meetingDays.filter(Boolean);
+  if (section?.meetingDays) return parseMeetingSchedule(section.meetingDays).days;
+  return parseMeetingSchedule(section?.meetingTimes).days;
+}
+
+function sectionStart(section) {
+  return section?.startTime || parseMeetingSchedule(section?.meetingTimes).startTime;
+}
+
+function sectionEnd(section) {
+  return section?.endTime || parseMeetingSchedule(section?.meetingTimes).endTime;
+}
+
+function sectionTimeLabel(section) {
+  const start = sectionStart(section);
+  const end = sectionEnd(section);
+  if (!start && !end && section?.meetingTimes) return section.meetingTimes;
+  return `${formatTime(start)} – ${formatTime(end)}`;
+}
+
 function timesOverlap(s1, e1, s2, e2) {
+  if (!s1 || !e1 || !s2 || !e2) return false;
   return s1 < e2 && e1 > s2;
 }
 
 function daysOverlap(d1, d2) {
-  return d1.some((d) => d2.includes(d));
+  const left = Array.isArray(d1) ? d1 : parseMeetingSchedule(d1).days;
+  const right = Array.isArray(d2) ? d2 : parseMeetingSchedule(d2).days;
+  return left.some((d) => right.includes(d));
 }
 
 function findTimeConflict(instructorId, section, allCourses, excludeSectionId = null) {
@@ -31,10 +68,10 @@ function findTimeConflict(instructorId, section, allCourses, excludeSectionId = 
       if (sec.id === excludeSectionId) continue;
       if (sec.instructorId !== instructorId) continue;
       if (
-        daysOverlap(sec.meetingDays, section.meetingDays) &&
-        timesOverlap(sec.startTime, sec.endTime, section.startTime, section.endTime)
+        daysOverlap(sectionDays(sec), sectionDays(section)) &&
+        timesOverlap(sectionStart(sec), sectionEnd(sec), sectionStart(section), sectionEnd(section))
       ) {
-        return `Conflict with ${course.courseCode} Sec ${sec.sectionNumber} (${sec.meetingDays.join("/")} ${formatTime(sec.startTime)}–${formatTime(sec.endTime)})`;
+        return `Conflict with ${course.courseCode} Sec ${sec.sectionNumber} (${sectionDays(sec).join("/")} ${formatTime(sectionStart(sec))}–${formatTime(sectionEnd(sec))})`;
       }
     }
   }
@@ -440,7 +477,13 @@ export default function CourseManagementPage() {
 
   const openEditSection = (courseId, section) => {
     setEditingSection({ courseId, section });
-    setSectionForm({ ...section, instructorId: section.instructorId || "" });
+    setSectionForm({
+      ...section,
+      meetingDays: sectionDays(section),
+      startTime: sectionStart(section),
+      endTime: sectionEnd(section),
+      instructorId: section.instructorId || "",
+    });
     const inst = getUser(section.instructorId);
     setInstSearch(inst ? inst.fullName : "");
     setSectionErrors({});
@@ -643,22 +686,23 @@ export default function CourseManagementPage() {
                           {(course.sections || []).map((sec, si) => {
                             const inst = getUser(sec.instructorId);
                             const enrolled = (sec.enrolledStudentIds || []).length;
-                            const pct = Math.round((enrolled / sec.capacity) * 100);
+                            const capacity = Number(sec.capacity) || 0;
+                            const pct = capacity > 0 ? Math.round((enrolled / capacity) * 100) : 0;
                             const isLast = si === course.sections.length - 1;
 
                             return (
                               <div
-                                key={sec.id}
+                                key={sec.id || `${course.id}-${sec.sectionNumber}`}
                                 style={{ display: "grid", gridTemplateColumns: "70px 130px 180px 80px 110px 1fr 220px", padding: "12px 20px 12px 56px", borderBottom: isLast ? "none" : "1px solid #0f1b33", alignItems: "center" }}
                               >
                                 <span style={{ fontSize: 13, fontWeight: 700, color: "#e2e8f0" }}>§ {sec.sectionNumber}</span>
-                                <span style={{ fontSize: 12, color: "#94a3b8" }}>{(sec.meetingDays || []).join(" / ")}</span>
-                                <span style={{ fontSize: 12, color: "#64748b" }}>{formatTime(sec.startTime)} – {formatTime(sec.endTime)}</span>
-                                <span style={{ fontSize: 12, color: "#64748b" }}>{sec.capacity}</span>
+                                <span style={{ fontSize: 12, color: "#94a3b8" }}>{sectionDays(sec).join(" / ") || "—"}</span>
+                                <span style={{ fontSize: 12, color: "#64748b" }}>{sectionTimeLabel(sec)}</span>
+                                <span style={{ fontSize: 12, color: "#64748b" }}>{capacity || "—"}</span>
 
                                 {/* Enrollment bar */}
                                 <div>
-                                  <div style={{ fontSize: 12, color: pct >= 90 ? "#f87171" : "#64748b" }}>{enrolled}/{sec.capacity}</div>
+                                  <div style={{ fontSize: 12, color: pct >= 90 ? "#f87171" : "#64748b" }}>{enrolled}/{capacity || "—"}</div>
                                   <div style={{ marginTop: 4, height: 3, borderRadius: 2, background: "#1a2540" }}>
                                     <div style={{ height: "100%", width: `${Math.min(pct, 100)}%`, borderRadius: 2, background: pct >= 90 ? "#f87171" : "#22d3ee" }} />
                                   </div>
