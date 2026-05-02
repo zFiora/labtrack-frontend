@@ -79,6 +79,131 @@ function getStarterCode(starterFiles) {
     .find((content) => content.trim()) ?? "";
 }
 
+function toIsoString(value) {
+  if (!value) return undefined;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toISOString();
+}
+
+function shouldSendApiId(id, prefix) {
+  return id && !String(id).startsWith(`${prefix}-`);
+}
+
+function normalizeTestCasesForApi(testCases) {
+  return testCases.map((testCase, index) => {
+    const type = testCase.type || testCase.visibility || "visible";
+    const id = shouldSendApiId(testCase.id, "tc") ? { id: testCase.id } : {};
+
+    return {
+      ...id,
+      name: testCase.name || `Test Case ${index + 1}`,
+      description: testCase.description || testCase.name || `Test Case ${index + 1}`,
+      type: type === "hidden" ? "hidden" : "visible",
+      expectedInput: testCase.expectedInput ?? testCase.input ?? "",
+      expectedOutput: testCase.expectedOutput ?? "",
+      points: Number.parseInt(testCase.points, 10) || 0,
+      order: Number.isInteger(Number(testCase.order)) ? Number(testCase.order) : index + 1,
+    };
+  });
+}
+
+function normalizeTestCasesForEditor(testCases) {
+  return testCases.map((testCase, index) => ({
+    id: testCase.id || `tc-loaded-${index + 1}`,
+    description: testCase.description || testCase.name || `Test Case ${index + 1}`,
+    input: testCase.input ?? testCase.expectedInput ?? "",
+    expectedOutput: testCase.expectedOutput ?? "",
+    points: testCase.points ?? "",
+    visibility: testCase.visibility || testCase.type || "visible",
+    timeout: testCase.timeout ?? testCase.timeoutSeconds ?? 5,
+    verified: Boolean(testCase.verified),
+  }));
+}
+
+function getDefaultSolutionFileName(language) {
+  const normalized = String(language || "").toLowerCase();
+  if (normalized.includes("python")) return "main.py";
+  if (normalized.includes("java") && !normalized.includes("script")) return "Main.java";
+  if (normalized.includes("javascript")) return "main.js";
+  if (normalized.includes("c++")) return "main.cpp";
+  if (normalized === "c") return "main.c";
+  if (normalized.includes("go")) return "main.go";
+  if (normalized.includes("rust")) return "main.rs";
+  return "solution.txt";
+}
+
+function getFirstFileContent(files) {
+  if (!files || Array.isArray(files) || typeof files !== "object") return "";
+  return Object.values(files).find((content) => typeof content === "string" && content.trim()) ?? "";
+}
+
+function buildSolutionFiles(solution) {
+  const code = solution.code ?? "";
+  if (code.trim()) {
+    return { [getDefaultSolutionFileName(solution.language)]: code };
+  }
+  return solution.files && typeof solution.files === "object" && !Array.isArray(solution.files)
+    ? solution.files
+    : {};
+}
+
+function getSolutionUnlockedAt(solution, labDueDate) {
+  if (solution.releaseMode === "immediate") {
+    return toIsoString(solution.publishedAt) || new Date().toISOString();
+  }
+
+  if (solution.releaseMode === "scheduled") {
+    return toIsoString(solution.releaseDate || solution.unlockedAt);
+  }
+
+  if (solution.releaseMode === "after_graded" && labDueDate) {
+    const due = new Date(labDueDate);
+    if (!Number.isNaN(due.getTime())) {
+      return new Date(due.getTime() + 2 * 24 * 60 * 60 * 1000).toISOString();
+    }
+  }
+
+  return toIsoString(solution.unlockedAt || solution.releaseDate);
+}
+
+function normalizeSolutionsForApi(solutions, labDueDate) {
+  return solutions.map((solution, index) => {
+    const id = shouldSendApiId(solution.id, "sol") ? { id: solution.id } : {};
+    const unlockedAt = getSolutionUnlockedAt(solution, labDueDate);
+
+    return {
+      ...id,
+      type: solution.type === "top_student" ? "top_student" : "instructor",
+      title: solution.title?.trim() || `Solution ${index + 1}`,
+      language: solution.language,
+      files: buildSolutionFiles(solution),
+      explanation: solution.explanation?.trim() || undefined,
+      ...(unlockedAt ? { unlockedAt } : {}),
+    };
+  });
+}
+
+function normalizeSolutionsForEditor(solutions) {
+  return solutions.map((solution, index) => {
+    const unlockedAt = solution.unlockedAt || solution.releaseDate;
+    const unlockedDate = unlockedAt ? new Date(unlockedAt) : null;
+    const isPublished = unlockedDate && !Number.isNaN(unlockedDate.getTime()) && unlockedDate <= new Date();
+    const releaseMode = solution.releaseMode || (unlockedAt ? "scheduled" : "after_graded");
+
+    return {
+      id: solution.id || `sol-loaded-${index + 1}`,
+      title: solution.title || `Solution ${index + 1}`,
+      language: solution.language || "",
+      code: solution.code ?? getFirstFileContent(solution.files),
+      explanation: solution.explanation || "",
+      releaseMode,
+      releaseDate: releaseMode === "scheduled" ? toDateTimeLocalValue(unlockedAt) : "",
+      publishedAt: solution.publishedAt || (isPublished ? unlockedAt : null),
+      status: solution.status || (isPublished ? "published" : "scheduled"),
+    };
+  });
+}
+
 function buildLabPayload(formData, starter, _supporting, tcs, sols) {
   return {
     courseId: formData.courseId.trim(),
@@ -90,8 +215,8 @@ function buildLabPayload(formData, starter, _supporting, tcs, sols) {
     difficulty: formData.difficulty,
     languages: formData.languages,
     starterCode: getStarterCode(starter),
-    testCases: tcs,
-    solutions: sols,
+    testCases: normalizeTestCasesForApi(tcs),
+    solutions: normalizeSolutionsForApi(sols, formData.dueDate),
   };
 }
 
@@ -189,8 +314,8 @@ export default function CreateLabPage() {
         });
         setStarterFiles(lab.starterFiles || []);
         setSupportingFiles(lab.supportingFiles || []);
-        setTestCases(lab.testCases || []);
-        setSolutions(lab.solutions || []);
+        setTestCases(normalizeTestCasesForEditor(lab.testCases || []));
+        setSolutions(normalizeSolutionsForEditor(lab.solutions || []));
         setLabStatus(lab.status || "draft");
         if (lab.updatedAt) setLastSaved(new Date(lab.updatedAt));
       })

@@ -346,7 +346,7 @@ uses it. This prevents 37 pages from each doing it manually.
 
 ### Files: `src/pages/instructor/SolutionsTab.jsx`, `src/pages/instructor/TestCasesTab.jsx`
 
-- [ ] **4.12 — These are sub-components of CreateLabPage**
+- [x] **4.12 — These are sub-components of CreateLabPage**
   - Wire test cases to be saved as part of `POST /api/instructor/labs` body
   - Wire solutions similarly — they are part of the lab creation payload
   - No separate endpoints — they are embedded in the lab object
