@@ -1,6 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import DashboardLayout from "../../components/layout/DashboardLayout";
+import { getCurrentUser } from "../../utils/authStorage.js";
+import { api } from "../../utils/api.js";
 
 // ─── Style tokens ─────────────────────────────────────────────────────────────
 const accent  = "#22d3ee";
@@ -12,371 +14,41 @@ const danger  = "#f87171";
 const border  = "#1a2540";
 const card    = "#0b1424";
 
-// ─── Seed lab catalogue ───────────────────────────────────────────────────────
-// deadline is in the past for labs 9 & 10 so solutions are unlocked;
-// lab 11 deadline is in the future so it stays locked.
-const LABS = [
-  {
-    id: 9,
-    title: "Lab 9 — Binary Trees",
-    course: "ICS 202 - SEC 03",
-    deadline: new Date("2026-04-01T23:59:00"),   // past → unlocked
-    submitted: true,
-  },
-  {
-    id: 10,
-    title: "Lab 10 — Graph Traversal",
-    course: "ICS 202 - SEC 03",
-    deadline: new Date("2026-04-08T23:59:00"),   // past → unlocked
-    submitted: true,
-  },
-  {
-    id: 11,
-    title: "Lab 11 — Hash Tables",
-    course: "ICS 202 - SEC 03",
-    deadline: new Date("2026-04-26T23:59:00"),   // future → locked
-    submitted: false,
-  },
-];
-
-const GRACE_DAYS = 2;
-
 function isUnlocked(lab) {
-  if (!lab.submitted) return false;
-  const unlock = new Date(lab.deadline);
-  unlock.setDate(unlock.getDate() + GRACE_DAYS);
-  return Date.now() >= unlock.getTime();
+  return (lab.solutions?.length ?? 0) > 0;
 }
 
 function unlockDate(lab) {
-  const d = new Date(lab.deadline);
-  d.setDate(d.getDate() + GRACE_DAYS);
+  if (!lab.dueDate) return "";
+  const d = new Date(lab.dueDate);
+  d.setDate(d.getDate() + 2);
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
-// ─── Reference solutions content ──────────────────────────────────────────────
-const SOLUTIONS = {
-  9: {
-    instructor: {
-      label: "Instructor Solution",
-      author: "Dr. Ahmad Al-Sayed",
-      description: "Clean recursive BST with proper edge-case handling and O(h) complexity on all operations.",
-      code: `class Node:
-    def __init__(self, val):
-        self.val = val
-        self.left = None
-        self.right = None
+function labTitle(lab) {
+  if (lab.labNumber && !String(lab.title ?? "").toLowerCase().startsWith("lab")) {
+    return `Lab ${lab.labNumber} - ${lab.title}`;
+  }
+  return lab.title ?? "Lab";
+}
 
-class BinaryTree:
-    def __init__(self):
-        self.root = None
+function courseLabel(lab) {
+  return [lab.courseCode, lab.sectionNumber ? `SEC ${lab.sectionNumber}` : null].filter(Boolean).join(" - ");
+}
 
-    # O(h) average, O(n) worst (unbalanced)
-    def insert(self, val):
-        self.root = self._insert(self.root, val)
+function isSubmitted(lab) {
+  return Boolean(lab.submittedAt) || ["submitted", "graded"].includes(lab.submissionStatus);
+}
 
-    def _insert(self, node, val):
-        if node is None:
-            return Node(val)
-        if val < node.val:
-            node.left = self._insert(node.left, val)
-        elif val > node.val:
-            node.right = self._insert(node.right, val)
-        return node  # duplicate — no change
-
-    # Returns True / False
-    def search(self, val):
-        return self._search(self.root, val)
-
-    def _search(self, node, val):
-        if node is None:
-            return False
-        if val == node.val:
-            return True
-        if val < node.val:
-            return self._search(node.left, val)
-        return self._search(node.right, val)
-
-    # In-order gives sorted list
-    def inorder(self, node=None):
-        if node is None:
-            node = self.root
-        result = []
-        if node:
-            result += self.inorder(node.left)
-            result.append(node.val)
-            result += self.inorder(node.right)
-        return result
-
-    def delete(self, val):
-        self.root = self._delete(self.root, val)
-
-    def _delete(self, node, val):
-        if node is None:
-            return None
-        if val < node.val:
-            node.left = self._delete(node.left, val)
-        elif val > node.val:
-            node.right = self._delete(node.right, val)
-        else:
-            # Node to delete found
-            if node.left is None:
-                return node.right
-            if node.right is None:
-                return node.left
-            # Two children: replace with in-order successor
-            successor = self._min_node(node.right)
-            node.val = successor.val
-            node.right = self._delete(node.right, successor.val)
-        return node
-
-    def _min_node(self, node):
-        while node.left:
-            node = node.left
-        return node`,
-      mistakes: [
-        "Forgetting to return the node in `_insert` breaks the recursive link — the tree never grows.",
-        "Using `=` instead of recursion in delete for the two-children case corrupts the BST property.",
-        "`inorder()` must pass `node` explicitly or default to `self.root`, not a new `None` each call.",
-        "Not handling duplicate values — decide policy (ignore / overwrite) and be consistent.",
-      ],
-    },
-    top_student: {
-      label: "Top Student Solution",
-      author: "Student (anonymised) — 100/100",
-      description: "Iterative insert and search for reduced call-stack depth, recursive delete.",
-      code: `class Node:
-    def __init__(self, val):
-        self.val = val
-        self.left = self.right = None
-
-class BinaryTree:
-    def __init__(self):
-        self.root = None
-
-    def insert(self, val):
-        if not self.root:
-            self.root = Node(val)
-            return
-        cur = self.root
-        while True:
-            if val < cur.val:
-                if cur.left is None:
-                    cur.left = Node(val)
-                    return
-                cur = cur.left
-            elif val > cur.val:
-                if cur.right is None:
-                    cur.right = Node(val)
-                    return
-                cur = cur.right
-            else:
-                return  # duplicate
-
-    def search(self, val):
-        cur = self.root
-        while cur:
-            if val == cur.val:
-                return True
-            cur = cur.left if val < cur.val else cur.right
-        return False
-
-    def inorder(self, node=None):
-        node = node if node is not None else self.root
-        if node is None:
-            return []
-        return self.inorder(node.left) + [node.val] + self.inorder(node.right)
-
-    def delete(self, val):
-        self.root = self._del(self.root, val)
-
-    def _del(self, n, val):
-        if not n:
-            return None
-        if val < n.val:
-            n.left = self._del(n.left, val)
-        elif val > n.val:
-            n.right = self._del(n.right, val)
-        else:
-            if not n.left: return n.right
-            if not n.right: return n.left
-            m = n.right
-            while m.left:
-                m = m.left
-            n.val = m.val
-            n.right = self._del(n.right, m.val)
-        return n`,
-      mistakes: [],
-    },
-    own: {
-      label: "Your Submission",
-      author: "You",
-      description: "Your submitted code — compare it side-by-side with the reference.",
-      code: `class Node:
-    def __init__(self, val):
-        self.val = val
-        self.left = None
-        self.right = None
-
-class BinaryTree:
-    def __init__(self):
-        self.root = None
-
-    def insert(self, val):
-        if not self.root:
-            self.root = Node(val)
-        else:
-            self._insert_recursive(self.root, val)
-
-    def _insert_recursive(self, node, val):
-        if val < node.val:
-            if node.left:
-                self._insert_recursive(node.left, val)
-            else:
-                node.left = Node(val)
-        else:
-            if node.right:
-                self._insert_recursive(node.right, val)
-            else:
-                node.right = Node(val)
-
-    def search(self, val):
-        # BUG: always returns False
-        return False
-
-    def inorder(self, node=None):
-        # BUG: missing node param
-        result = []
-        if self.root:
-            result += self.inorder(self.root.left)
-            result.append(self.root.val)
-            result += self.inorder(self.root.right)
-        return result
-
-    def delete(self, val):
-        pass  # not implemented`,
-      mistakes: [],
-    },
-  },
-  10: {
-    instructor: {
-      label: "Instructor Solution",
-      author: "Dr. Ahmad Al-Sayed",
-      description: "Textbook BFS using deque and iterative DFS using explicit stack.",
-      code: `from collections import deque
-
-class Graph:
-    def __init__(self):
-        self.adj = {}
-
-    def add_edge(self, u, v):
-        self.adj.setdefault(u, []).append(v)
-        self.adj.setdefault(v, self.adj.get(v, []))  # ensure v exists
-
-    def bfs(self, start):
-        visited = set()
-        queue = deque([start])
-        order = []
-        visited.add(start)
-        while queue:
-            node = queue.popleft()
-            order.append(node)
-            for neighbor in self.adj.get(node, []):
-                if neighbor not in visited:
-                    visited.add(neighbor)
-                    queue.append(neighbor)
-        return order
-
-    def dfs(self, start):
-        visited = set()
-        stack = [start]
-        order = []
-        while stack:
-            node = stack.pop()
-            if node not in visited:
-                visited.add(node)
-                order.append(node)
-                for neighbor in reversed(self.adj.get(node, [])):
-                    if neighbor not in visited:
-                        stack.append(neighbor)
-        return order`,
-      mistakes: [
-        "Using recursion for BFS is incorrect — the spec requires an explicit deque.",
-        "Not marking nodes as visited before enqueuing causes duplicates in the output.",
-        "Forgetting `reversed()` in iterative DFS gives a reversed traversal order.",
-        "Not initialising un-visited nodes in `adj` leads to KeyError on isolated vertices.",
-      ],
-    },
-    top_student: {
-      label: "Top Student Solution",
-      author: "Student (anonymised) — 100/100",
-      description: "Compact and readable BFS/DFS with clear variable names.",
-      code: `from collections import deque
-
-class Graph:
-    def __init__(self):
-        self.adj = {}
-
-    def add_edge(self, u, v):
-        for node in (u, v):
-            self.adj.setdefault(node, [])
-        self.adj[u].append(v)
-
-    def bfs(self, start):
-        seen, q, out = {start}, deque([start]), []
-        while q:
-            v = q.popleft()
-            out.append(v)
-            for w in self.adj.get(v, []):
-                if w not in seen:
-                    seen.add(w)
-                    q.append(w)
-        return out
-
-    def dfs(self, start):
-        seen, stack, out = set(), [start], []
-        while stack:
-            v = stack.pop()
-            if v in seen: continue
-            seen.add(v)
-            out.append(v)
-            for w in reversed(self.adj.get(v, [])):
-                stack.append(w)
-        return out`,
-      mistakes: [],
-    },
-    own: {
-      label: "Your Submission",
-      author: "You",
-      description: "Your submitted code.",
-      code: `from collections import deque
-
-class Graph:
-    def __init__(self):
-        self.adj = {}
-
-    def add_edge(self, u, v):
-        if u not in self.adj:
-            self.adj[u] = []
-        self.adj[u].append(v)
-
-    def bfs(self, start):
-        # BUG: doesn't mark visited before enqueue
-        queue = deque([start])
-        order = []
-        while queue:
-            node = queue.popleft()
-            order.append(node)
-            for n in self.adj.get(node, []):
-                queue.append(n)
-        return order
-
-    def dfs(self, start):
-        pass  # not implemented`,
-      mistakes: [],
-    },
-  },
-};
+function normalizeLab(lab) {
+  return {
+    ...lab,
+    title: labTitle(lab),
+    course: courseLabel(lab) || lab.courseTitle || "Course",
+    solutions: Array.isArray(lab.solutions) ? lab.solutions : [],
+    submitted: isSubmitted(lab),
+  };
+}
 
 // ─── Syntax helpers ───────────────────────────────────────────────────────────
 const KEYWORDS = ["def","class","return","if","else","elif","while","for","in","not","and","or",
@@ -489,7 +161,7 @@ function CodeViewer({ code, diffWith, downloadName }) {
 // ─── Lab selector card ────────────────────────────────────────────────────────
 function LabCard({ lab, onClick }) {
   const unlocked = isUnlocked(lab);
-  const color = unlocked ? accent : muted;
+  const dueDate = lab.dueDate ? new Date(lab.dueDate) : null;
 
   return (
     <div style={{
@@ -517,7 +189,7 @@ function LabCard({ lab, onClick }) {
         </div>
         <div style={{ fontSize: 12, color: muted }}>{lab.course}</div>
         <div style={{ fontSize: 12, color: dimmed, marginTop: 4 }}>
-          Deadline: {lab.deadline.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+          Deadline: {dueDate ? dueDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "Not scheduled"}
         </div>
         {!unlocked && lab.submitted && (
           <div style={{ fontSize: 11, color: warn, marginTop: 6 }}>
@@ -553,20 +225,67 @@ function LabCard({ lab, onClick }) {
 }
 
 // ─── Solutions viewer ─────────────────────────────────────────────────────────
-const TAB_KEYS = ["instructor", "top_student", "own"];
+const SOLUTION_ICONS = {
+  instructor: "ðŸŽ“",
+  top_student: "ðŸ†",
+  own: "ðŸ‘¤",
+};
+
+function filesToCode(files) {
+  if (!files || typeof files !== "object") return "";
+  return Object.entries(files)
+    .map(([filename, content]) => `# ${filename}\n${content}`)
+    .join("\n\n");
+}
+
+function solutionAuthor(solution) {
+  if (solution.type === "top_student") return "Student (anonymised)";
+  if (solution.type === "own") return "You";
+  return "Instructor";
+}
+
+function solutionDescription(solution) {
+  if (solution.explanation) return solution.explanation;
+  if (solution.type === "top_student") return "High-scoring student reference solution.";
+  if (solution.type === "own") return "Your submitted code for side-by-side comparison.";
+  return "Instructor reference solution.";
+}
+
+function solutionToTab(solution) {
+  return {
+    id: solution.id ?? solution.type,
+    type: solution.type,
+    label: solution.title ?? (solution.type === "top_student" ? "Top Student Solution" : "Instructor Solution"),
+    author: solutionAuthor(solution),
+    description: solutionDescription(solution),
+    code: filesToCode(solution.files),
+    filename: Object.keys(solution.files ?? {})[0] ?? "solution.py",
+    mistakes: solution.mistakes ?? [],
+  };
+}
+
+function solutionTabs(lab) {
+  const apiSolutions = (lab.solutions ?? []).map(solutionToTab);
+  const ownFiles = lab.studentSolution?.files ?? lab.submission?.files;
+  if (!ownFiles) return apiSolutions;
+  return [
+    ...apiSolutions,
+    solutionToTab({ id: "own", type: "own", title: "Your Submission", files: ownFiles }),
+  ];
+}
 
 function SolutionsViewer({ lab, onBack }) {
-  const [activeTab, setActiveTab]   = useState("instructor");
+  const tabs = solutionTabs(lab);
+  const [activeTab, setActiveTab]   = useState(tabs[0]?.id ?? "");
   const [showDiff, setShowDiff]     = useState(false);
   const [toast, setToast]           = useState("");
 
-  const solutions = SOLUTIONS[lab.id];
-  if (!solutions) return null;
+  const current = tabs.find((tab) => tab.id === activeTab) ?? tabs[0];
+  const ownCode = tabs.find((tab) => tab.type === "own")?.code;
+  const refCode = current?.code ?? "";
+  const diffCode = (showDiff && current?.type !== "own" && ownCode) ? ownCode : null;
 
-  const current   = solutions[activeTab];
-  const ownCode   = solutions.own?.code;
-  const refCode   = solutions[activeTab]?.code;
-  const diffCode  = (showDiff && activeTab !== "own" && ownCode) ? ownCode : null;
+  if (!current) return null;
 
   const TAB_LABELS = {
     instructor:  { label: "Instructor Solution", icon: "🎓" },
@@ -579,7 +298,7 @@ function SolutionsViewer({ lab, onBack }) {
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement("a");
     a.href     = url;
-    a.download = `${lab.title.replace(/\s/g, "_")}_${activeTab}.py`;
+    a.download = `${lab.title.replace(/\s/g, "_")}_${current.type}.py`;
     a.click();
     URL.revokeObjectURL(url);
     setToast("Solution downloaded successfully");
@@ -603,14 +322,14 @@ function SolutionsViewer({ lab, onBack }) {
 
       {/* Tabs */}
       <div style={{ display: "flex", gap: 6, marginBottom: 20, background: "#0a1628", borderRadius: 12, padding: 4, width: "fit-content" }}>
-        {TAB_KEYS.map((key) => (
-          <button key={key} type="button" onClick={() => { setActiveTab(key); setShowDiff(false); }} style={{
-            background: activeTab === key ? card : "transparent",
-            border: activeTab === key ? `1px solid ${border}` : "1px solid transparent",
+        {tabs.map((tab) => (
+          <button key={tab.id} type="button" onClick={() => { setActiveTab(tab.id); setShowDiff(false); }} style={{
+            background: activeTab === tab.id ? card : "transparent",
+            border: activeTab === tab.id ? `1px solid ${border}` : "1px solid transparent",
             borderRadius: 9, padding: "8px 16px", cursor: "pointer",
-            color: activeTab === key ? "#e2e8f0" : muted, fontSize: 13, fontWeight: 600,
+            color: activeTab === tab.id ? "#e2e8f0" : muted, fontSize: 13, fontWeight: 600,
           }}>
-            {TAB_LABELS[key].icon} {TAB_LABELS[key].label}
+            {TAB_LABELS[tab.type]?.icon ?? SOLUTION_ICONS[tab.type] ?? "ðŸ“„"} {tab.label}
           </button>
         ))}
       </div>
@@ -623,7 +342,7 @@ function SolutionsViewer({ lab, onBack }) {
           <div style={{ fontSize: 12, color: "#94a3b8" }}>{current.description}</div>
         </div>
         <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
-          {activeTab !== "own" && ownCode && (
+          {current.type !== "own" && ownCode && (
             <button type="button" onClick={() => setShowDiff(!showDiff)} style={{
               background: showDiff ? "rgba(251,191,36,0.12)" : "transparent",
               border: `1px solid ${showDiff ? warn : border}`,
@@ -654,7 +373,7 @@ function SolutionsViewer({ lab, onBack }) {
       <CodeViewer
         code={refCode}
         diffWith={diffCode}
-        downloadName={`${lab.title.replace(/[^a-z0-9]/gi, "_")}_${activeTab}.py`}
+        downloadName={`${lab.title.replace(/[^a-z0-9]/gi, "_")}_${current.type}.py`}
       />
 
       {/* Common mistakes */}
@@ -684,7 +403,34 @@ function SolutionsViewer({ lab, onBack }) {
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function ReferenceSolutionsPage() {
+  const navigate = useNavigate();
+  const [labs, setLabs] = useState([]);
   const [selectedLab, setSelectedLab] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    const user = getCurrentUser();
+    if (!user) { navigate("/"); return; }
+
+    api.get("/student/labs")
+      .then((labList) => Promise.all(
+        labList.map((lab) => api.get(`/student/labs/${lab.id}`).then((detail) => normalizeLab({ ...lab, ...detail })))
+      ))
+      .then((details) => {
+        const sorted = [...details].sort((a, b) => {
+          const da = a.dueDate ? new Date(a.dueDate).getTime() : Infinity;
+          const db = b.dueDate ? new Date(b.dueDate).getTime() : Infinity;
+          return da - db;
+        });
+        setLabs(sorted);
+      })
+      .catch((err) => {
+        if (err.status === 401) { navigate("/"); return; }
+        setError("Failed to load reference solutions. Please refresh.");
+      })
+      .finally(() => setLoading(false));
+  }, [navigate]);
 
   return (
     <DashboardLayout>
@@ -703,6 +449,26 @@ export default function ReferenceSolutionsPage() {
               </p>
             </div>
 
+            {loading && (
+              <div style={{ textAlign: "center", padding: "56px 0", color: muted }}>
+                Loading reference solutionsâ€¦
+              </div>
+            )}
+
+            {error && (
+              <div style={{ textAlign: "center", padding: "56px 0", color: danger }}>
+                {error}
+              </div>
+            )}
+
+            {!loading && !error && labs.length === 0 && (
+              <div style={{ textAlign: "center", padding: "56px 0", color: muted }}>
+                No labs are available yet.
+              </div>
+            )}
+
+            {!loading && !error && labs.length > 0 && (
+              <>
             {/* Info bar */}
             <div style={{
               display: "flex", gap: 16, marginBottom: 20,
@@ -725,10 +491,12 @@ export default function ReferenceSolutionsPage() {
 
             {/* Lab cards */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 16 }}>
-              {LABS.map((lab) => (
+              {labs.map((lab) => (
                 <LabCard key={lab.id} lab={lab} onClick={() => setSelectedLab(lab)} />
               ))}
             </div>
+              </>
+            )}
           </>
         ) : (
           <SolutionsViewer lab={selectedLab} onBack={() => setSelectedLab(null)} />

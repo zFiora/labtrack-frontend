@@ -246,7 +246,7 @@ uses it. This prevents 37 pages from each doing it manually.
 
 ### File: `src/pages/student/ReceivedReviewPage.jsx`
 
-- [ ] **3.19 — Load review from API**
+- [x] **3.19 — Load review from API**
   - Call `api.get("/peer-reviews/:reviewId")` on mount
   - OR call `api.get("/peer-reviews/received/:labId")` if navigating by labId
   - Display `review.lineComments` as inline annotations on the code view
@@ -256,7 +256,7 @@ uses it. This prevents 37 pages from each doing it manually.
 
 ### File: `src/pages/student/ReferenceSolutionsPage.jsx`
 
-- [ ] **3.20 — Replace localStorage with API**
+- [x] **3.20 — Replace localStorage with API**
   - Call `api.get("/student/labs")` to get lab list
   - For each lab, call `api.get("/student/labs/:labId")` — solutions are in `lab.solutions` array
   - The backend enforces the "unlocked 2 days after deadline" rule — just render whatever is returned

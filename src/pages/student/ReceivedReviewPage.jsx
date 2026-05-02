@@ -1,41 +1,76 @@
 import { useState, useEffect } from "react";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import DashboardLayout from "../../components/layout/DashboardLayout";
-
-const PEER_REVIEWS_KEY = "labtrack_peer_reviews";
-
-function readJson(key, fallback) {
-  try {
-    const raw = localStorage.getItem(key);
-    return raw ? JSON.parse(raw) : fallback;
-  } catch (e) {
-    console.warn(`Failed to read ${key}`, e);
-    return fallback;
-  }
-}
+import { api } from "../../utils/api.js";
 
 function renderStars(value) {
   return "★".repeat(value) + "☆".repeat(5 - value);
 }
 
+function unwrapReview(payload) {
+  return payload?.review ?? payload?.peerReview ?? payload;
+}
+
+function getFiles(review) {
+  if (Array.isArray(review?.files) && review.files.length > 0) return review.files;
+  return Object.keys(review?.fileContents ?? {});
+}
+
+function getLineComment(lineComments, file, lineNum, index) {
+  return (
+    lineComments?.[`${file}:${lineNum}`] ??
+    lineComments?.[lineNum] ??
+    lineComments?.[index] ??
+    null
+  );
+}
+
 export default function ReceivedReviewPage() {
   const { reviewId } = useParams();
+  const navigate = useNavigate();
   const [reviewData, setReviewData] = useState(null);
   const [activeFile, setActiveFile] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
-    const all = readJson(PEER_REVIEWS_KEY, []);
-    const found = all.find((r) => r.id === reviewId) || all.find((r) => r.status === "completed") || null;
-    if (found) {
-      setReviewData(found);
-      setActiveFile(found.files?.[0] || null);
-    }
-  }, [reviewId]);
+    let alive = true;
 
-  if (!reviewData) {
+    api.get(`/peer-reviews/${reviewId}`)
+      .then((payload) => {
+        if (!alive) return;
+
+        const found = unwrapReview(payload);
+        setError(null);
+        setReviewData(found);
+        setActiveFile(getFiles(found)[0] ?? null);
+      })
+      .catch((err) => {
+        if (!alive) return;
+        if (err.status === 401) { navigate("/"); return; }
+        setError("Failed to load peer review feedback. Please refresh.");
+      })
+      .finally(() => {
+        if (alive) setLoading(false);
+      });
+
+    return () => { alive = false; };
+  }, [navigate, reviewId]);
+
+  if (loading) {
     return (
       <DashboardLayout>
         <div className="flex items-center justify-center h-64 text-slate-400">Loading feedback…</div>
+      </DashboardLayout>
+    );
+  }
+
+  if (error || !reviewData) {
+    return (
+      <DashboardLayout>
+        <div className="flex items-center justify-center h-64 text-red-400">
+          {error ?? "Peer review feedback was not found."}
+        </div>
       </DashboardLayout>
     );
   }
@@ -44,6 +79,9 @@ export default function ReceivedReviewPage() {
   const average = r
     ? ((r.readability + r.efficiency + r.comments) / 3).toFixed(1)
     : "—";
+
+  const files = getFiles(reviewData);
+  const lineComments = r?.lineComments || {};
 
   return (
     <DashboardLayout>
@@ -74,7 +112,7 @@ export default function ReceivedReviewPage() {
               <div>
                 <p className="text-slate-500 mb-2">Files</p>
                 <div className="space-y-2">
-                  {reviewData.files?.map((file) => (
+                  {files.map((file) => (
                     <button
                       key={file}
                       type="button"
@@ -103,8 +141,8 @@ export default function ReceivedReviewPage() {
               <div className="bg-[#09111f] rounded-xl border border-cyan-500/10 min-h-[550px] overflow-x-auto font-mono text-sm">
                 {(reviewData.fileContents?.[activeFile] || "").split("\n").map((text, i) => {
                   const lineNum = i + 1;
-                  const reviewLineComments = reviewData.review?.lineComments || {};
-                  const hasComment = Boolean(reviewLineComments[i]);
+                  const comment = getLineComment(lineComments, activeFile, lineNum, i);
+                  const hasComment = Boolean(comment);
                   return (
                     <div key={lineNum}>
                       <div className={`flex leading-7 ${hasComment ? "bg-yellow-500/10" : "hover:bg-white/5"}`}>
@@ -120,7 +158,7 @@ export default function ReceivedReviewPage() {
                       </div>
                       {hasComment && (
                         <div className="bg-yellow-500/10 border-l-2 border-yellow-400 mx-4 mb-1 px-3 py-2 rounded-r text-xs text-yellow-200">
-                          {reviewLineComments[i]}
+                          {comment}
                         </div>
                       )}
                     </div>
