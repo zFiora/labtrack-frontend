@@ -139,6 +139,8 @@ export default function SubmissionsPage() {
   const [noteText, setNoteText] = useState("");
   const [gradeValue, setGradeValue] = useState("");
   const [gradeErr, setGradeErr] = useState("");
+  const [savingGrade, setSavingGrade] = useState(false);
+  const [savingNote, setSavingNote] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [showBulk, setShowBulk]       = useState(false);
   const [pageToast, setPageToast]     = useState(null);
@@ -258,37 +260,80 @@ export default function SubmissionsPage() {
   };
 
   // ── Grade / note save ──────────────────────────────────────────────────────
-  const handleSaveNote = () => {
+  const handleSaveNote = async () => {
     if (!selectedSub) return;
-    setSelectedSub((prev) => ({ ...prev, instructorNote: noteText }));
-    setSubmissions((prev) => prev.map((s) =>
-      s.id === selectedSub.id ? { ...s, instructorNote: noteText } : s,
-    ));
-    setPageToast({ type: "success", message: "Note updated for this view" });
-    setTimeout(() => setPageToast(null), 2500);
+    setSavingNote(true);
+    try {
+      const updated = normalizeSubmission(
+        await api.patch(`/instructor/submissions/${selectedSub.id}/grade`, {
+          instructorNote: noteText,
+        }),
+        lab,
+      );
+      setSelectedSub(updated);
+      setSubmissions((prev) => prev.map((s) => (s.id === selectedSub.id ? updated : s)));
+      setPageToast({ type: "success", message: "Note saved" });
+      setTimeout(() => setPageToast(null), 2500);
+    } catch (err) {
+      if (err.status === 401) { navigate("/"); return; }
+      setPageToast({ type: "error", message: err.message ?? "Failed to save note" });
+      setTimeout(() => setPageToast(null), 2500);
+    } finally {
+      setSavingNote(false);
+    }
   };
 
-  const handleGrade = () => {
+  const handleGrade = async () => {
     const v = Number(gradeValue);
     if (!gradeValue || isNaN(v) || v < 0 || v > (lab?.points || 100)) {
       setGradeErr(`Score must be 0–${lab?.points || 100}`);
       return;
     }
     setGradeErr("");
-    const gradedAt = new Date().toISOString();
-    setSelectedSub((prev) => ({ ...prev, score: v, gradedAt, status: "graded" }));
-    setSubmissions((prev) => prev.map((s) =>
-      s.id === selectedSub.id ? { ...s, score: v, gradedAt, status: "graded" } : s,
-    ));
-    setPageToast({ type: "success", message: "Grade updated for this view" });
-    setTimeout(() => setPageToast(null), 2500);
+    setSavingGrade(true);
+    try {
+      const updated = normalizeSubmission(
+        await api.patch(`/instructor/submissions/${selectedSub.id}/grade`, {
+          score: v,
+          status: "graded",
+        }),
+        lab,
+      );
+      setSelectedSub(updated);
+      setSubmissions((prev) => prev.map((s) => (s.id === selectedSub.id ? updated : s)));
+      setPageToast({ type: "success", message: "Grade saved" });
+      setTimeout(() => setPageToast(null), 2500);
+    } catch (err) {
+      if (err.status === 401) { navigate("/"); return; }
+      setPageToast({ type: "error", message: err.message ?? "Failed to save grade" });
+      setTimeout(() => setPageToast(null), 2500);
+    } finally {
+      setSavingGrade(false);
+    }
   };
 
-  // ── Simulated ZIP download ─────────────────────────────────────────────────
+  // ── Download current backend-loaded submissions ────────────────────────────
   const handleDownloadZip = () => {
-    const content = submitted > 0
-      ? `Submissions for lab: ${lab?.title || labId}\nTotal: ${submitted}\n\nThis is a simulated export.`
-      : "No submissions to download.";
+    const exported = submissions.filter((sub) => ["submitted", "graded"].includes(sub.status));
+    const content = exported.length > 0
+      ? [
+          `Submissions for lab: ${lab?.title || labId}`,
+          `Total: ${exported.length}`,
+          "",
+          ...exported.map((sub) => [
+            `Student: ${sub.studentName} <${sub.studentEmail || "no email"}>`,
+            `Status: ${sub.status}`,
+            `Score: ${sub.score ?? "ungraded"}/${sub.maxScore || lab?.points || 100}`,
+            `Language: ${sub.language || "unknown"}`,
+            `Submitted: ${sub.submittedAt || "unknown"}`,
+            "",
+            sub.code || "",
+            "",
+            "-----",
+            "",
+          ].join("\n")),
+        ].join("\n")
+      : "No submitted submissions to download.";
     const blob = new Blob([content], { type: "text/plain" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
@@ -828,13 +873,14 @@ export default function SubmissionsPage() {
                   <span style={{ color: "#475569", fontSize: 14, paddingTop: 10 }}>/ {lab.points || 100}</span>
                   <button
                     onClick={handleGrade}
+                    disabled={savingGrade}
                     style={{
                       padding: "9px 18px", borderRadius: 9, border: "none",
-                      background: "linear-gradient(135deg, #06b6d4, #0891b2)",
+                      background: savingGrade ? "#1e3a5f" : "linear-gradient(135deg, #06b6d4, #0891b2)",
                       color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer",
                     }}
                   >
-                    Save Grade
+                    {savingGrade ? "Saving..." : "Save Grade"}
                   </button>
                 </div>
               </div>
@@ -860,12 +906,13 @@ export default function SubmissionsPage() {
                 <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8 }}>
                   <button
                     onClick={handleSaveNote}
+                    disabled={savingNote}
                     style={{
                       padding: "7px 16px", borderRadius: 8, border: "1px solid #1e3a5f",
-                      background: "transparent", color: "#94a3b8", fontSize: 12, fontWeight: 600, cursor: "pointer",
+                      background: "transparent", color: savingNote ? "#475569" : "#94a3b8", fontSize: 12, fontWeight: 600, cursor: savingNote ? "default" : "pointer",
                     }}
                   >
-                    Save Note
+                    {savingNote ? "Saving..." : "Save Note"}
                   </button>
                 </div>
               </div>
