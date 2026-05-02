@@ -5,6 +5,26 @@ import { useNavigate } from "react-router-dom";
 
 const EMPTY_FORM = { code: "", name: "", department: "", semester: "", creditHours: 3, sectionNumber: "01" };
 
+function getStudentKey(student) {
+  if (!student) return "";
+  if (typeof student === "string") return student;
+  return String(student.id || student._id || student.studentId || student.email || "");
+}
+
+function addSectionStudents(target, section) {
+  const students = section.enrolledStudentIds || section.students || [];
+  students.forEach((student) => {
+    const key = getStudentKey(student);
+    if (key) target.add(key);
+  });
+}
+
+function countUniqueStudents(sections = []) {
+  const ids = new Set();
+  sections.forEach((section) => addSectionStudents(ids, section));
+  return ids.size;
+}
+
 export default function InstructorCoursesPage() {
   const navigate = useNavigate();
   const [courses, setCourses] = useState([]);
@@ -57,10 +77,7 @@ export default function InstructorCoursesPage() {
     setTimeout(() => setCopied(null), 2000);
   };
 
-  const totalStudents = courses.reduce(
-    (sum, c) => sum + (c.sections || []).reduce((s, sec) => s + (sec.enrolledStudentIds?.length ?? sec.students?.length ?? 0), 0),
-    0
-  );
+  const totalStudents = countUniqueStudents(courses.flatMap((course) => course.sections || []));
 
   return (
     <InstructorLayout>
@@ -133,9 +150,7 @@ export default function InstructorCoursesPage() {
         ) : (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))", gap: 16 }}>
             {courses.map((course) => {
-              const studentCount = (course.sections || []).reduce(
-                (s, sec) => s + (sec.enrolledStudentIds?.length ?? sec.students?.length ?? 0), 0
-              );
+              const studentCount = countUniqueStudents(course.sections || []);
               const isCopied = copied === course.joinCode;
               return (
                 <div key={course.id} style={{ background: "#0f1b33", border: "1px solid #1a2540", borderRadius: 16, padding: "22px 24px" }}>
