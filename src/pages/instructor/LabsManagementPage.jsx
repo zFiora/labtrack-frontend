@@ -53,6 +53,7 @@ export default function LabsManagementPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [actionError, setActionError] = useState("");
+  const [collapsedCourses, setCollapsedCourses] = useState(() => new Set());
 
   const fetchLabs = useCallback(async (targetFilter = filter, { showLoading = true } = {}) => {
     if (showLoading) setLoading(true);
@@ -96,7 +97,7 @@ export default function LabsManagementPage() {
       const meta = courseMeta(lab);
       const key = `${meta.courseCode}-${meta.semester}`;
       if (!groups.has(key)) {
-        groups.set(key, { ...meta, labs: [] });
+        groups.set(key, { key, ...meta, labs: [] });
       }
       groups.get(key).labs.push(lab);
     });
@@ -186,6 +187,16 @@ export default function LabsManagementPage() {
   };
 
   const TABS = ["all", "active", "draft", "closed"];
+  const toggleCourseGroup = (groupKey) => {
+    setCollapsedCourses((current) => {
+      const next = new Set(current);
+      if (next.has(groupKey)) next.delete(groupKey);
+      else next.add(groupKey);
+      return next;
+    });
+  };
+  const collapseAll = () => setCollapsedCourses(new Set(groupedLabs.map((group) => group.key)));
+  const expandAll = () => setCollapsedCourses(new Set());
 
   return (
     <InstructorLayout>
@@ -271,47 +282,75 @@ export default function LabsManagementPage() {
         </div>
 
         {/* Filter tabs */}
-        <div
-          style={{
-            display: "flex",
-            gap: 4,
-            marginBottom: 20,
-            background: "#0a1628",
-            border: "1px solid #1a2540",
-            borderRadius: 12,
-            padding: 4,
-            width: "fit-content",
-          }}
-        >
-          {TABS.map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setFilter(tab)}
-              style={{
-                padding: "7px 16px",
-                borderRadius: 9,
-                border: "none",
-                background: filter === tab ? "#10213f" : "transparent",
-                color: filter === tab ? "#e2e8f0" : "#64748b",
-                fontSize: 13,
-                fontWeight: 600,
-                cursor: "pointer",
-                textTransform: "capitalize",
-                transition: "all 0.2s",
-              }}
-            >
-              {tab === "all" ? "All" : tab.charAt(0).toUpperCase() + tab.slice(1)}
-              <span
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 20, flexWrap: "wrap" }}>
+          <div
+            style={{
+              display: "flex",
+              gap: 4,
+              background: "#0a1628",
+              border: "1px solid #1a2540",
+              borderRadius: 12,
+              padding: 4,
+              width: "fit-content",
+            }}
+          >
+            {TABS.map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setFilter(tab)}
                 style={{
-                  marginLeft: 6,
-                  fontSize: 11,
-                  color: filter === tab ? "#22d3ee" : "#475569",
+                  padding: "7px 16px",
+                  borderRadius: 9,
+                  border: "none",
+                  background: filter === tab ? "#10213f" : "transparent",
+                  color: filter === tab ? "#e2e8f0" : "#64748b",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  textTransform: "capitalize",
+                  transition: "all 0.2s",
                 }}
               >
-                {counts[tab]}
-              </span>
-            </button>
-          ))}
+                {tab === "all" ? "All" : tab.charAt(0).toUpperCase() + tab.slice(1)}
+                <span
+                  style={{
+                    marginLeft: 6,
+                    fontSize: 11,
+                    color: filter === tab ? "#22d3ee" : "#475569",
+                  }}
+                >
+                  {counts[tab]}
+                </span>
+              </button>
+            ))}
+          </div>
+
+          {groupedLabs.length > 1 && (
+            <div style={{ display: "flex", gap: 8 }}>
+              {[
+                ["Expand all", expandAll],
+                ["Collapse all", collapseAll],
+              ].map(([label, onClick]) => (
+                <button
+                  key={label}
+                  type="button"
+                  onClick={onClick}
+                  style={{
+                    padding: "7px 12px",
+                    borderRadius: 9,
+                    border: "1px solid #1a2540",
+                    background: "transparent",
+                    color: "#94a3b8",
+                    fontSize: 12,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Labs list */}
@@ -432,8 +471,10 @@ export default function LabsManagementPage() {
               <span>Actions</span>
             </div>
 
-            {groupedLabs.map((group, groupIndex) => (
-              <div key={`${group.courseCode}-${group.semester || groupIndex}`}>
+            {groupedLabs.map((group, groupIndex) => {
+              const isCollapsed = collapsedCourses.has(group.key);
+              return (
+              <div key={group.key}>
                 <div
                   style={{
                     display: "flex",
@@ -446,8 +487,42 @@ export default function LabsManagementPage() {
                     background: "rgba(16,33,63,0.72)",
                   }}
                 >
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                  <button
+                    type="button"
+                    onClick={() => toggleCourseGroup(group.key)}
+                    aria-expanded={!isCollapsed}
+                    style={{
+                      flex: 1,
+                      minWidth: 0,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 10,
+                      background: "transparent",
+                      border: "none",
+                      padding: 0,
+                      cursor: "pointer",
+                      textAlign: "left",
+                    }}
+                  >
+                    <span
+                      style={{
+                        width: 22,
+                        height: 22,
+                        borderRadius: 7,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        color: "#94a3b8",
+                        background: "rgba(148,163,184,0.08)",
+                        border: "1px solid rgba(148,163,184,0.16)",
+                        fontSize: 10,
+                        flexShrink: 0,
+                      }}
+                    >
+                      {isCollapsed ? "▶" : "▼"}
+                    </span>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                       <span style={{ color: "#22d3ee", fontSize: 13, fontWeight: 800, fontFamily: "monospace" }}>
                         {group.courseCode}
                       </span>
@@ -471,14 +546,15 @@ export default function LabsManagementPage() {
                           {group.semester}
                         </span>
                       )}
+                      </div>
                     </div>
-                  </div>
+                  </button>
                   <span style={{ color: "#64748b", fontSize: 12, fontWeight: 700 }}>
                     {group.labs.length} lab{group.labs.length !== 1 ? "s" : ""}
                   </span>
                 </div>
 
-                {group.labs.map((lab, i) => {
+                {!isCollapsed && group.labs.map((lab, i) => {
                   const statusStyle = STATUS_STYLES[lab.status] || STATUS_STYLES.draft;
                   const diffStyle = DIFFICULTY_STYLES[lab.difficulty] || DIFFICULTY_STYLES.medium;
                   const isLast = i === group.labs.length - 1;
@@ -661,7 +737,8 @@ export default function LabsManagementPage() {
                   );
                 })}
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
