@@ -1,102 +1,135 @@
-# LabTrack Front-End – How to Use
+# LabTrack Frontend - How To Use
 
-This guide explains how to set up, run, and collaborate on the project.
+This guide covers local setup, deployment, and common checks for the React/Vite frontend.
 
----
+## 1. Install
 
-## 1. Clone the Repository
-
-
-git clone <YOUR_REPO_LINK>
-cd labtrack-frontend
-
----
-
-## 2. Install Dependencies
-
+```bash
 npm install
+```
 
-----
+## 2. Configure Environment
 
-## 3. Start the Development Server
+Create `.env` in the frontend repo.
 
+For local backend:
+
+```env
+VITE_API_URL=http://localhost:5000/api
+```
+
+For deployed backend:
+
+```env
+VITE_API_URL=https://labtrack-backend-pjbq.onrender.com/api
+```
+
+Vite reads `VITE_API_URL` at build time. If this value changes in Vercel, redeploy the frontend.
+
+## 3. Run Locally
+
+```bash
 npm run dev
+```
 
-Open the link http://localhost:*****
+Open:
 
----
+```txt
+http://localhost:5173
+```
 
-## 4. Git Workflow (IMPORTANT)
+## 4. Build
 
-We are using a branch-based workflow.
+```bash
+npm run build
+```
 
-Main branches
-main → final stable version (DO NOT work here directly)
-development → main working branch
+The output goes to:
 
---- 
+```txt
+dist/
+```
 
-## 5. How to Work on the Project
+## 5. Deploy To Vercel
 
-Step 1 — Switch to development
-git checkout development
-git pull origin development
+Use these project settings:
 
----
-Step 2 — Create your feature branch
+```txt
+Framework Preset: Vite
+Build Command: npm run build
+Output Directory: dist
+Install Command: npm install
+```
+
+Add this environment variable before the production build:
+
+```env
+VITE_API_URL=https://labtrack-backend-pjbq.onrender.com/api
+```
+
+If the variable was added after the first deploy:
+
+1. Go to Vercel project `Settings`.
+2. Open `Environment Variables`.
+3. Add `VITE_API_URL` for `Production`.
+4. Go to `Deployments`.
+5. Redeploy the latest deployment without build cache.
+
+## 6. Backend URL Update
+
+After Vercel gives the final frontend URL, update the backend Render env:
+
+```env
+FRONTEND_URL=https://labtrack-frontend-pearl.vercel.app
+```
+
+Redeploy the backend. This keeps CORS and password reset links aligned with the deployed frontend.
+
+## 7. Demo Accounts
+
+| Role | Email | Password |
+| --- | --- | --- |
+| Admin | `admin@kfupm.edu.sa` | `LabTrack123` |
+| Instructor | `instructor@kfupm.edu.sa` | `LabTrack123` |
+| Student | `student1@kfupm.edu.sa` | `LabTrack123` |
+| Student | `student2@kfupm.edu.sa` | `LabTrack123` |
+
+## 8. Git Workflow
+
+The project has historically used branch-based work:
+
+```bash
+git checkout main
+git pull origin main
 git checkout -b feature/your-feature-name
+```
 
-Examples:
+Before pushing:
 
-feature/login-page
-feature/dashboard-ui
-feature/admin-panel
+```bash
+npm run build
+git status
+```
 
+Use clear commit messages and avoid committing `.env`, `dist/`, or `node_modules/`.
 
-Step 3 — Make changes and commit
-git add .
-git commit -m "Describe your changes"
-Step 4 — Push your branch
-git push origin feature/your-feature-name
-Step 5 — Merge into development
+## 9. Troubleshooting
 
-After finishing your work:
+If the app opens but login fails:
 
-Merge your branch into development
-Do NOT push directly to main
+- Confirm `VITE_API_URL` is set in Vercel.
+- Confirm the frontend was redeployed after adding `VITE_API_URL`.
+- Confirm the backend health check works: `https://labtrack-backend-pjbq.onrender.com/api/health`.
 
---- 
+If a direct URL refresh shows 404:
 
-## 6. Team Rules
-Do not push directly to main
-Always pull latest development before starting
-Each member must commit from their own account
-Write clear commit messages
-Work on separate feature branches
+- Confirm `vercel.json` is deployed.
 
----
+If forgot-password links point to localhost:
 
-## 7. Authentication (Demo Behavior)
+- Update Render `FRONTEND_URL`.
+- Redeploy the backend.
 
-This project uses frontend-only authentication:
+If lab test execution fails:
 
-Registered users are stored in localStorage
-Login checks against stored users
-Navigation depends on role:
-Student → /dashboard
-Instructor → /admin/users
-
----
-
-## 8. Troubleshooting
-
-If the project does not run:
-
-Make sure Node.js is installed
-Run npm install again
-Make sure you're inside the project folder
-
-If needed:
-
-rm -rf node_modules
-npm install
+- Confirm backend JDoodle credentials are set on Render.
