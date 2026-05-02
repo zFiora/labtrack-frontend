@@ -294,7 +294,7 @@ uses it. This prevents 37 pages from each doing it manually.
 
 ### File: `src/pages/instructor/SubmissionsPage.jsx`
 
-- [ ] **4.5 — Load submissions from API**
+- [x] **4.5 — Load submissions from API**
   - Call `api.get("/instructor/labs/:labId/submissions")`
   - Returns array of submissions with full student details
   - Remove the 12-student mock seed logic

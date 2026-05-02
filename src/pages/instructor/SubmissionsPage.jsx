@@ -2,99 +2,9 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import InstructorLayout from "../../components/layout/InstructorLayout";
 import BulkGradePanel from "./BulkGradePanel";
+import { api } from "../../utils/api.js";
 
-const LABS_KEY = "labtrack_instructor_labs";
-const SUBS_KEY = "labtrack_submissions";
 const POLL_INTERVAL_MS = 30_000;
-
-// ── Mock data seeder ─────────────────────────────────────────────────────────
-const MOCK_STUDENTS = [
-  { id: "s1", name: "Ahmed Al-Rashidi",   email: "ahmed.rashidi@kfupm.edu.sa" },
-  { id: "s2", name: "Sara Al-Otaibi",     email: "sara.otaibi@kfupm.edu.sa" },
-  { id: "s3", name: "Mohammed Al-Zahrani",email: "m.zahrani@kfupm.edu.sa" },
-  { id: "s4", name: "Fatima Al-Ghamdi",   email: "f.ghamdi@kfupm.edu.sa" },
-  { id: "s5", name: "Omar Al-Harbi",      email: "o.harbi@kfupm.edu.sa" },
-  { id: "s6", name: "Nora Al-Qahtani",    email: "n.qahtani@kfupm.edu.sa" },
-  { id: "s7", name: "Khalid Al-Dosari",   email: "k.dosari@kfupm.edu.sa" },
-  { id: "s8", name: "Lina Al-Shehri",     email: "l.shehri@kfupm.edu.sa" },
-  { id: "s9", name: "Yusuf Al-Mutairi",   email: "y.mutairi@kfupm.edu.sa" },
-  { id: "s10",name: "Reem Al-Anazi",      email: "r.anazi@kfupm.edu.sa" },
-  { id: "s11",name: "Abdullah Al-Sulami", email: "a.sulami@kfupm.edu.sa" },
-  { id: "s12",name: "Hessa Al-Shammari",  email: "h.shammari@kfupm.edu.sa" },
-];
-
-const MOCK_CODE = `def max_of_three(a, b, c):
-    return max(a, b, c)
-
-# Read input
-nums = list(map(int, input().split()))
-print(max_of_three(nums[0], nums[1], nums[2]))
-`;
-
-function seedSubmissions(labId, lab) {
-  const all = JSON.parse(localStorage.getItem(SUBS_KEY) || "{}");
-  if (all[labId]) return; // already seeded
-
-  const dueDate = lab.dueDate ? new Date(lab.dueDate) : new Date(Date.now() + 48 * 3600_000);
-  const now = Date.now();
-  const base = now - 2 * 3600_000; // 2 hours ago
-
-  const subs = {};
-  // s1-s5: submitted (some late), s6: in_progress, s7-s8: not_started, s9: submitted late, s10-s12: not_started
-  const scenarios = [
-    { id: "s1",  status: "submitted",    minsAgo: 110, score: 95, late: false },
-    { id: "s2",  status: "submitted",    minsAgo: 95,  score: 80, late: false },
-    { id: "s3",  status: "submitted",    minsAgo: 70,  score: 100,late: false },
-    { id: "s4",  status: "submitted",    minsAgo: 60,  score: 70, late: false },
-    { id: "s5",  status: "submitted",    minsAgo: 40,  score: 55, late: false },
-    { id: "s6",  status: "in_progress",  minsAgo: null,score: null,late: false },
-    { id: "s7",  status: "not_started",  minsAgo: null,score: null,late: false },
-    { id: "s8",  status: "not_started",  minsAgo: null,score: null,late: false },
-    { id: "s9",  status: "submitted",    minsAgo: -30, score: 45, late: true  }, // -30 = after due
-    { id: "s10", status: "not_started",  minsAgo: null,score: null,late: false },
-    { id: "s11", status: "not_started",  minsAgo: null,score: null,late: false },
-    { id: "s12", status: "not_started",  minsAgo: null,score: null,late: false },
-  ];
-
-  const totalPts = lab.points || 100;
-
-  scenarios.forEach(({ id, status, minsAgo, score, late }) => {
-    const student = MOCK_STUDENTS.find((s) => s.id === id);
-    const submittedAt =
-      minsAgo !== null
-        ? new Date(now - minsAgo * 60_000).toISOString()
-        : null;
-
-    const tcResults = (lab.testCases || []).map((tc) => ({
-      id: tc.id,
-      description: tc.description,
-      status: score !== null && score >= 60 ? "pass" : score !== null ? "fail" : "pending",
-      points: tc.points,
-      earned: score !== null && score >= 60 ? tc.points : 0,
-    }));
-
-    subs[id] = {
-      id: `sub-${labId}-${id}`,
-      labId,
-      studentId: id,
-      studentName: student?.name || id,
-      studentEmail: student?.email || "",
-      status,
-      submittedAt,
-      score: score !== null ? Math.round((score / 100) * totalPts) : null,
-      maxScore: totalPts,
-      late,
-      language: (lab.languages || ["Python"])[0],
-      code: status === "submitted" ? MOCK_CODE : "",
-      testResults: tcResults,
-      instructorNote: "",
-      gradedAt: null,
-    };
-  });
-
-  all[labId] = subs;
-  localStorage.setItem(SUBS_KEY, JSON.stringify(all));
-}
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 function fmtDateTime(iso) {
@@ -118,20 +28,74 @@ function fmtRelative(iso) {
 
 const STATUS_CFG = {
   submitted:   { label: "Submitted",   bg: "rgba(34,197,94,0.10)",  text: "#4ade80", border: "rgba(34,197,94,0.25)" },
+  graded:      { label: "Graded",      bg: "rgba(34,211,238,0.10)", text: "#22d3ee", border: "rgba(34,211,238,0.25)" },
   in_progress: { label: "In Progress", bg: "rgba(250,204,21,0.10)", text: "#facc15", border: "rgba(250,204,21,0.25)" },
   not_started: { label: "Not Started", bg: "rgba(148,163,184,0.08)",text: "#64748b", border: "rgba(148,163,184,0.2)" },
   late:        { label: "Late",        bg: "rgba(249,115,22,0.10)", text: "#fb923c", border: "rgba(249,115,22,0.25)" },
 };
 
+function getLabPayload(data) {
+  return data?.lab ?? data;
+}
+
+function getSubmissionsPayload(data) {
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data?.submissions)) return data.submissions;
+  if (Array.isArray(data?.items)) return data.items;
+  return [];
+}
+
+function normalizeTestResult(result, index) {
+  return {
+    ...result,
+    id: result.id || result.testCaseId || `test-${index + 1}`,
+    description: result.description || result.name || `Test ${index + 1}`,
+    earned: result.earned ?? result.earnedPoints ?? 0,
+  };
+}
+
+function normalizeSubmission(submission, lab) {
+  const student = submission.student || submission.studentDetails || {};
+  const submittedAt = submission.submittedAt || null;
+  const late =
+    submission.late ??
+    (!!submittedAt && !!lab?.dueDate && new Date(submittedAt) > new Date(lab.dueDate));
+
+  return {
+    ...submission,
+    id: submission.id || submission.submissionId,
+    labId: submission.labId || lab?.id,
+    studentId: submission.studentId || student.id,
+    studentName:
+      submission.studentName ||
+      student.fullName ||
+      student.name ||
+      submission.studentEmail ||
+      "Student",
+    studentEmail: submission.studentEmail || student.email || "",
+    status: submission.status || "not_started",
+    submittedAt,
+    score: submission.score ?? null,
+    maxScore: submission.maxScore || lab?.points || 100,
+    late,
+    language: submission.language || lab?.language || lab?.languages?.[0] || "",
+    code: submission.code || "",
+    testResults: (submission.testResults || []).map(normalizeTestResult),
+    instructorNote: submission.instructorNote || "",
+    gradedAt: submission.gradedAt || null,
+  };
+}
+
 function StatusBadge({ status, late }) {
-  const cfg = late && status === "submitted" ? STATUS_CFG.late : STATUS_CFG[status] || STATUS_CFG.not_started;
+  const showLate = late && ["submitted", "graded"].includes(status);
+  const cfg = showLate ? STATUS_CFG.late : STATUS_CFG[status] || STATUS_CFG.not_started;
   return (
     <span style={{
       display: "inline-block", padding: "3px 10px", borderRadius: 20,
       fontSize: 11, fontWeight: 700,
       background: cfg.bg, color: cfg.text, border: `1px solid ${cfg.border}`,
     }}>
-      {late && status === "submitted" ? "Late" : cfg.label}
+      {showLate ? "Late" : cfg.label}
     </span>
   );
 }
@@ -157,6 +121,9 @@ export default function SubmissionsPage() {
 
   const [lab, setLab] = useState(null);
   const [submissions, setSubmissions] = useState([]);
+  const [submissionStats, setSubmissionStats] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
   const [filterScoreMin, setFilterScoreMin] = useState("");
   const [filterScoreMax, setFilterScoreMax] = useState("");
@@ -178,25 +145,50 @@ export default function SubmissionsPage() {
 
   const prevSubCountRef = useRef(0);
 
-  // Load lab + seed + load submissions
-  const loadAll = useCallback(() => {
-    const labs = JSON.parse(localStorage.getItem(LABS_KEY) || "[]");
-    const found = labs.find((l) => l.id === labId);
-    if (!found) return;
-    setLab(found);
-    seedSubmissions(labId, found);
-    const all = JSON.parse(localStorage.getItem(SUBS_KEY) || "{}");
-    const subs = Object.values(all[labId] || {});
-    const submitted = subs.filter((s) => s.status === "submitted").length;
-    if (prevSubCountRef.current > 0 && submitted > prevSubCountRef.current) {
-      setNewCount((n) => n + (submitted - prevSubCountRef.current));
-    }
-    prevSubCountRef.current = submitted;
-    setSubmissions(subs);
-    setLastUpdated(new Date());
-  }, [labId]);
+  // Load lab + submissions
+  const loadAll = useCallback(async ({ showLoading = false } = {}) => {
+    if (showLoading) setLoading(true);
+    setLoadError("");
 
-  useEffect(() => { loadAll(); }, [loadAll]);
+    try {
+      const [labData, submissionsData] = await Promise.all([
+        api.get(`/instructor/labs/${labId}`),
+        api.get(`/instructor/labs/${labId}/submissions`),
+      ]);
+
+      const nextLab = getLabPayload(labData);
+      const subs = getSubmissionsPayload(submissionsData).map((submission) =>
+        normalizeSubmission(submission, nextLab),
+      );
+      const submittedCount = subs.filter((s) => ["submitted", "graded"].includes(s.status)).length;
+
+      if (prevSubCountRef.current > 0 && submittedCount > prevSubCountRef.current) {
+        setNewCount((n) => n + (submittedCount - prevSubCountRef.current));
+      }
+
+      prevSubCountRef.current = submittedCount;
+      setLab(nextLab);
+      setSubmissions(subs);
+      setSubmissionStats({
+        ...(submissionsData?.stats || {}),
+        total: submissionsData?.total ?? subs.length,
+      });
+      setLastUpdated(new Date());
+    } catch (err) {
+      if (err.status === 401) {
+        navigate("/");
+        return;
+      }
+      setLoadError(err.message ?? "Failed to load submissions. Please try again.");
+      setLab(null);
+      setSubmissions([]);
+      setSubmissionStats(null);
+    } finally {
+      setLoading(false);
+    }
+  }, [labId, navigate]);
+
+  useEffect(() => { loadAll({ showLoading: true }); }, [loadAll]);
 
   // Auto-refresh polling
   useEffect(() => {
@@ -219,13 +211,15 @@ export default function SubmissionsPage() {
   }, [lastUpdated]);
 
   // ── Stats ──────────────────────────────────────────────────────────────────
-  const totalStudents = MOCK_STUDENTS.length;
-  const submitted = submissions.filter((s) => s.status === "submitted").length;
-  const inProgress = submissions.filter((s) => s.status === "in_progress").length;
-  const notStarted = submissions.filter((s) => s.status === "not_started").length;
-  const lateCount = submissions.filter((s) => s.late && s.status === "submitted").length;
+  const graded = submissionStats?.graded ?? submissions.filter((s) => s.status === "graded").length;
+  const submittedOnly = submissionStats?.submitted ?? submissions.filter((s) => s.status === "submitted").length;
+  const totalStudents = submissionStats?.total ?? submissions.length;
+  const submitted = submittedOnly + graded;
+  const inProgress = submissionStats?.inProgress ?? submissions.filter((s) => s.status === "in_progress").length;
+  const notStarted = submissionStats?.notStarted ?? submissions.filter((s) => s.status === "not_started").length;
+  const lateCount = submissions.filter((s) => s.late && ["submitted", "graded"].includes(s.status)).length;
   const scores = submissions.filter((s) => s.score !== null).map((s) => s.score);
-  const avgScore = scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null;
+  const avgScore = submissionStats?.averageScore ?? (scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null);
 
   // ── Filtering + sorting ────────────────────────────────────────────────────
   const validate = () => {
@@ -239,7 +233,7 @@ export default function SubmissionsPage() {
 
   const filtered = submissions.filter((s) => {
     if (filterStatus !== "all") {
-      if (filterStatus === "late" && !(s.late && s.status === "submitted")) return false;
+      if (filterStatus === "late" && !(s.late && ["submitted", "graded"].includes(s.status))) return false;
       if (filterStatus !== "late" && s.status !== filterStatus) return false;
     }
     if (filterScoreMin !== "" && (s.score === null || s.score < Number(filterScoreMin))) return false;
@@ -266,13 +260,12 @@ export default function SubmissionsPage() {
   // ── Grade / note save ──────────────────────────────────────────────────────
   const handleSaveNote = () => {
     if (!selectedSub) return;
-    const all = JSON.parse(localStorage.getItem(SUBS_KEY) || "{}");
-    all[labId][selectedSub.studentId].instructorNote = noteText;
-    localStorage.setItem(SUBS_KEY, JSON.stringify(all));
     setSelectedSub((prev) => ({ ...prev, instructorNote: noteText }));
     setSubmissions((prev) => prev.map((s) =>
-      s.studentId === selectedSub.studentId ? { ...s, instructorNote: noteText } : s,
+      s.id === selectedSub.id ? { ...s, instructorNote: noteText } : s,
     ));
+    setPageToast({ type: "success", message: "Note updated for this view" });
+    setTimeout(() => setPageToast(null), 2500);
   };
 
   const handleGrade = () => {
@@ -282,14 +275,13 @@ export default function SubmissionsPage() {
       return;
     }
     setGradeErr("");
-    const all = JSON.parse(localStorage.getItem(SUBS_KEY) || "{}");
-    all[labId][selectedSub.studentId].score = v;
-    all[labId][selectedSub.studentId].gradedAt = new Date().toISOString();
-    localStorage.setItem(SUBS_KEY, JSON.stringify(all));
-    setSelectedSub((prev) => ({ ...prev, score: v, gradedAt: new Date().toISOString() }));
+    const gradedAt = new Date().toISOString();
+    setSelectedSub((prev) => ({ ...prev, score: v, gradedAt, status: "graded" }));
     setSubmissions((prev) => prev.map((s) =>
-      s.studentId === selectedSub.studentId ? { ...s, score: v } : s,
+      s.id === selectedSub.id ? { ...s, score: v, gradedAt, status: "graded" } : s,
     ));
+    setPageToast({ type: "success", message: "Grade updated for this view" });
+    setTimeout(() => setPageToast(null), 2500);
   };
 
   // ── Simulated ZIP download ─────────────────────────────────────────────────
@@ -317,6 +309,26 @@ export default function SubmissionsPage() {
       {sortBy === col ? (sortDir === "asc" ? "▲" : "▼") : "⇅"}
     </span>
   );
+
+  if (loading) {
+    return (
+      <InstructorLayout>
+        <div style={{ padding: 48, textAlign: "center", color: "#64748b" }}>
+          Loading submissions...
+        </div>
+      </InstructorLayout>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <InstructorLayout>
+        <div style={{ padding: 48, textAlign: "center", color: "#f87171" }}>
+          {loadError}
+        </div>
+      </InstructorLayout>
+    );
+  }
 
   if (!lab) {
     return (
@@ -478,7 +490,7 @@ export default function SubmissionsPage() {
           </div>
           <div style={{ height: 6, background: "#1a2540", borderRadius: 99, overflow: "hidden", display: "flex" }}>
             <div style={{
-              width: `${(submitted / totalStudents) * 100}%`, height: "100%",
+              width: `${totalStudents > 0 ? (submitted / totalStudents) * 100 : 0}%`, height: "100%",
               background: "linear-gradient(90deg, #06b6d4, #22d3ee)", borderRadius: 99, transition: "width 0.4s",
             }} />
           </div>
@@ -494,7 +506,8 @@ export default function SubmissionsPage() {
             <div style={{ display: "flex", gap: 3, flex: 1, flexWrap: "wrap" }}>
               {[
                 { key: "all", label: "All", count: submissions.length },
-                { key: "submitted", label: "Submitted", count: submitted },
+                { key: "submitted", label: "Submitted", count: submittedOnly },
+                { key: "graded", label: "Graded", count: graded },
                 { key: "in_progress", label: "In Progress", count: inProgress },
                 { key: "not_started", label: "Not Started", count: notStarted },
                 { key: "late", label: "Late", count: lateCount },
@@ -634,7 +647,8 @@ export default function SubmissionsPage() {
 
             {sorted.map((sub, idx) => {
               const isLast = idx === sorted.length - 1;
-              const rowBg = sub.late && sub.status === "submitted"
+              const isLateSubmission = sub.late && ["submitted", "graded"].includes(sub.status);
+              const rowBg = isLateSubmission
                 ? "rgba(249,115,22,0.04)"
                 : "transparent";
 
@@ -649,9 +663,9 @@ export default function SubmissionsPage() {
                     borderBottom: isLast ? "none" : "1px solid #0f1b33",
                     background: rowBg,
                     transition: "background 0.15s",
-                    borderLeft: sub.late && sub.status === "submitted" ? "3px solid rgba(249,115,22,0.5)" : "3px solid transparent",
+                    borderLeft: isLateSubmission ? "3px solid rgba(249,115,22,0.5)" : "3px solid transparent",
                   }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = sub.late && sub.status === "submitted" ? "rgba(249,115,22,0.07)" : "rgba(16,33,63,0.5)"}
+                  onMouseEnter={(e) => e.currentTarget.style.background = isLateSubmission ? "rgba(249,115,22,0.07)" : "rgba(16,33,63,0.5)"}
                   onMouseLeave={(e) => e.currentTarget.style.background = rowBg}
                 >
                   {/* Student */}
