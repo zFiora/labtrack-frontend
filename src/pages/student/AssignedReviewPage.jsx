@@ -1,18 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import DashboardLayout from "../../components/layout/DashboardLayout";
-
-const PEER_REVIEWS_KEY = "labtrack_peer_reviews";
-
-function readJson(key, fallback) {
-  try {
-    const raw = localStorage.getItem(key);
-    return raw ? JSON.parse(raw) : fallback;
-  } catch (e) {
-    console.warn(`Failed to read ${key}`, e);
-    return fallback;
-  }
-}
+import { api } from "../../utils/api";
 
 function starRatingWidget(label, value, onChange, readonly) {
   return (
@@ -58,22 +47,40 @@ export default function AssignedReviewPage() {
   const [commentDraft, setCommentDraft]   = useState("");
 
   useEffect(() => {
-    const all = readJson(PEER_REVIEWS_KEY, []);
-    const found = all.find((r) => r.id === reviewId) || all[0] || null;
-    if (found) {
-      setReview(found);
-      setActiveFile(found.files?.[0] || null);
-      if (found.review) {
-        setReadability(found.review.readability);
-        setEfficiency(found.review.efficiency);
-        setCommentsRating(found.review.comments);
-        setStrengths(found.review.strengths);
-        setImprovements(found.review.improvements);
-        setOverallComment(found.review.overallComment);
-        setLineComments(found.review.lineComments || {});
-        setSubmitted(true);
-      }
-    }
+    api.get(`/peer-reviews/${reviewId}`)
+      .then((data) => {
+        // Normalise files to an array of name strings
+        const fileList = (data.files || []).map((f) => f.filename || f).filter(Boolean);
+        const firstName = fileList[0] || "submission";
+        // Backend stores fileContents as a single string; map it under the first filename
+        const contentsMap = { [firstName]: data.fileContents || "" };
+
+        const normalised = {
+          ...data,
+          labTitle: data.labId?.title || "Lab",
+          sharedAt: data.createdAt,
+          files: fileList,
+          fileContents: contentsMap,
+        };
+        setReview(normalised);
+        setActiveFile(firstName);
+
+        // Pre-fill form if already submitted
+        if (data.status === "submitted") {
+          setReadability(data.readability || 0);
+          setEfficiency(data.efficiency || 0);
+          setCommentsRating(typeof data.comments === "number" ? data.comments : 0);
+          setStrengths(data.strengths || "");
+          setImprovements(data.improvements || "");
+          setOverallComment(data.overallComment || "");
+          // lineComments stored as [{line, comment}] — convert to {lineIdx: text}
+          const map = {};
+          (data.lineComments || []).forEach(({ line, comment }) => { map[line] = comment; });
+          setLineComments(map);
+          setSubmitted(true);
+        }
+      })
+      .catch(() => setReview(null));
   }, [reviewId]);
 
   if (!review) {
@@ -98,33 +105,30 @@ export default function AssignedReviewPage() {
     improvements.trim().length >= 10 &&
     overallComment.trim().length >= 10;
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!isFormValid || submitted) return;
 
-    const reviewData = {
-      readability,
-      efficiency,
-      comments: commentsRating,
-      strengths: strengths.trim(),
-      improvements: improvements.trim(),
-      overallComment: overallComment.trim(),
-      lineComments,
-      submittedAt: new Date().toISOString(),
-    };
+    const lineCommentsArray = Object.entries(lineComments).map(([lineIdx, text]) => ({
+      line: Number(lineIdx),
+      comment: text,
+    }));
 
     try {
-      const all = readJson(PEER_REVIEWS_KEY, []);
-      const updated = all.map((r) => {
-        if (r.id !== review.id) return r;
-        return { ...r, status: "completed", review: reviewData };
+      await api.post(`/peer-reviews/${reviewId}/submit`, {
+        readability,
+        efficiency,
+        comments: commentsRating,
+        strengths: strengths.trim(),
+        improvements: improvements.trim(),
+        overallComment: overallComment.trim(),
+        lineComments: lineCommentsArray,
+        submittedAt: new Date().toISOString(),
       });
-      localStorage.setItem(PEER_REVIEWS_KEY, JSON.stringify(updated));
+      setSubmitted(true);
+      setTimeout(() => navigate("/peer-review"), 1500);
     } catch (e) {
-      console.warn("Could not save review", e);
+      console.warn("Could not submit review", e);
     }
-
-    setSubmitted(true);
-    setTimeout(() => navigate("/peer-review"), 1500);
   };
 
   const handleSaveComment = (lineIdx) => {
