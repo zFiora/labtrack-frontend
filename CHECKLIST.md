@@ -305,12 +305,12 @@ uses it. This prevents 37 pages from each doing it manually.
 
 ### File: `src/pages/instructor/GradingPage.jsx`
 
-- [ ] **4.6 — Load submission from API**
+- [x] **4.6 — Load submission from API**
   - Get `subId` from route params
   - Call `api.get("/instructor/labs/:labId/submissions")` and find by subId
     OR keep a state-passing approach from SubmissionsPage (navigation state)
 
-- [ ] **4.7 — Submit grade via API**
+- [x] **4.7 — Submit grade via API**
   - Call `api.patch("/instructor/submissions/:subId/grade", { score, rubric: { comments, style, efficiency }, inlineComments, overallFeedback, status: "graded" })`
   - Remove localStorage grade write logic
 
