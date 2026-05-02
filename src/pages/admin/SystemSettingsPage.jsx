@@ -1,10 +1,7 @@
 import { useState, useEffect } from "react";
 import AdminLayout from "../../components/layout/AdminLayout";
+import { api } from "../../utils/api";
 
-// ─── Storage key ──────────────────────────────────────────────────────────────
-const SETTINGS_KEY = "labtrack_system_settings";
-
-// ─── Seed / defaults ──────────────────────────────────────────────────────────
 const DEFAULT_SETTINGS = {
   execution: {
     compilationTimeoutSec: 30,
@@ -14,19 +11,19 @@ const DEFAULT_SETTINGS = {
     sandboxEnabled: true,
   },
   languages: [
-    { id: "python", label: "Python 3.11", icon: "🐍", enabled: true },
-    { id: "cpp", label: "C++ 17", icon: "⚙️", enabled: true },
-    { id: "java", label: "Java 21", icon: "☕", enabled: true },
-    { id: "javascript", label: "JavaScript (Node 20)", icon: "🟨", enabled: true },
-    { id: "c", label: "C 11", icon: "🔵", enabled: false },
-    { id: "rust", label: "Rust 1.75", icon: "🦀", enabled: false },
-    { id: "go", label: "Go 1.22", icon: "🐹", enabled: false },
-    { id: "r", label: "R 4.3", icon: "📊", enabled: false },
+    { id: "python",     label: "Python 3.11",          icon: "🐍", enabled: true  },
+    { id: "cpp",        label: "C++ 17",               icon: "⚙️", enabled: true  },
+    { id: "java",       label: "Java 21",              icon: "☕", enabled: true  },
+    { id: "javascript", label: "JavaScript (Node 20)", icon: "🟨", enabled: true  },
+    { id: "c",          label: "C 11",                 icon: "🔵", enabled: false },
+    { id: "rust",       label: "Rust 1.75",            icon: "🦀", enabled: false },
+    { id: "go",         label: "Go 1.22",              icon: "🐹", enabled: false },
+    { id: "r",          label: "R 4.3",                icon: "📊", enabled: false },
   ],
   api: {
-    judgeApiUrl: "https://judge.labtrack.internal/api/v2",
-    judgeApiKey: "sk-judge-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
-    aiAssistApiKey: "sk-ai-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    judgeApiUrl: "",
+    judgeApiKey: "",
+    aiAssistApiKey: "",
     aiAssistEnabled: true,
     aiAssistModel: "gpt-4o",
   },
@@ -46,15 +43,6 @@ const DEFAULT_SETTINGS = {
     digestFrequency: "daily",
   },
 };
-
-function loadSettings() {
-  try {
-    const raw = localStorage.getItem(SETTINGS_KEY);
-    if (raw) return JSON.parse(raw);
-  } catch (_) { /* ignore */ }
-  localStorage.setItem(SETTINGS_KEY, JSON.stringify(DEFAULT_SETTINGS));
-  return DEFAULT_SETTINGS;
-}
 
 // ─── Style tokens ─────────────────────────────────────────────────────────────
 const bg = "#080f1e";
@@ -181,7 +169,10 @@ function ApiKeyField({ value, onChange }) {
     setShow(false);
   }
 
-  const masked = value.slice(0, 6) + "••••••••••••••••••••" + value.slice(-4);
+  const displayValue = value || "";
+  const masked = displayValue.length > 10
+    ? displayValue.slice(0, 6) + "••••••••••••••••••••" + displayValue.slice(-4)
+    : "•".repeat(displayValue.length || 8);
 
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -209,7 +200,7 @@ function ApiKeyField({ value, onChange }) {
       ) : (
         <>
           <span style={{ fontFamily: "monospace", fontSize: 12, color: "#94a3b8" }}>
-            {show ? value : masked}
+            {show ? displayValue : masked}
           </span>
           <button type="button" onClick={() => setShow(!show)} style={smallBtn("#1e3a5f")}>
             {show ? "Hide" : "Show"}
@@ -236,7 +227,6 @@ function smallBtn(bg) {
   };
 }
 
-// ─── Toast ────────────────────────────────────────────────────────────────────
 function Toast({ msg, type }) {
   if (!msg) return null;
   const color = type === "error" ? danger : type === "warn" ? warn : success;
@@ -255,9 +245,26 @@ function Toast({ msg, type }) {
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function SystemSettingsPage() {
-  const [settings, setSettings] = useState(loadSettings);
+  const [settings, setSettings] = useState(structuredClone(DEFAULT_SETTINGS));
   const [toast, setToast] = useState({ msg: "", type: "success" });
   const [unsaved, setUnsaved] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    api.get("/admin/system/settings")
+      .then((data) => {
+        setSettings({
+          execution:     { ...DEFAULT_SETTINGS.execution,     ...(data.execution     || {}) },
+          languages:     Array.isArray(data.languages) && data.languages.length ? data.languages : DEFAULT_SETTINGS.languages,
+          api:           { ...DEFAULT_SETTINGS.api,           ...(data.api           || {}) },
+          testing:       { ...DEFAULT_SETTINGS.testing,       ...(data.testing       || {}) },
+          notifications: { ...DEFAULT_SETTINGS.notifications, ...(data.notifications || {}) },
+        });
+      })
+      .catch((err) => setToast({ msg: `Load failed: ${err.message}`, type: "error" }))
+      .finally(() => setLoading(false));
+  }, []);
 
   useEffect(() => {
     if (toast.msg) {
@@ -288,10 +295,24 @@ export default function SystemSettingsPage() {
     setUnsaved(true);
   }
 
-  function saveAll() {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
-    setUnsaved(false);
-    setToast({ msg: "✓ System settings saved successfully", type: "success" });
+  async function saveAll() {
+    setSaving(true);
+    try {
+      const updated = await api.patch("/admin/system/settings", settings);
+      setSettings({
+        execution:     { ...DEFAULT_SETTINGS.execution,     ...(updated.execution     || {}) },
+        languages:     Array.isArray(updated.languages) && updated.languages.length ? updated.languages : DEFAULT_SETTINGS.languages,
+        api:           { ...DEFAULT_SETTINGS.api,           ...(updated.api           || {}) },
+        testing:       { ...DEFAULT_SETTINGS.testing,       ...(updated.testing       || {}) },
+        notifications: { ...DEFAULT_SETTINGS.notifications, ...(updated.notifications || {}) },
+      });
+      setUnsaved(false);
+      setToast({ msg: "✓ System settings saved successfully", type: "success" });
+    } catch (err) {
+      setToast({ msg: `Save failed: ${err.message}`, type: "error" });
+    } finally {
+      setSaving(false);
+    }
   }
 
   function resetToDefaults() {
@@ -300,7 +321,17 @@ export default function SystemSettingsPage() {
     setToast({ msg: "Settings reset to defaults — click Save to apply", type: "warn" });
   }
 
-  const { execution, languages, api, testing, notifications } = settings;
+  const { execution, languages, api: apiSettings, testing, notifications } = settings;
+
+  if (loading) {
+    return (
+      <AdminLayout>
+        <div style={{ background: bg, minHeight: "100vh", padding: "32px 36px", color: muted, fontSize: 14 }}>
+          Loading…
+        </div>
+      </AdminLayout>
+    );
+  }
 
   return (
     <AdminLayout>
@@ -329,17 +360,17 @@ export default function SystemSettingsPage() {
             }}>
               Reset to Defaults
             </button>
-            <button type="button" onClick={saveAll} style={{
-              background: accent,
+            <button type="button" onClick={saveAll} disabled={saving} style={{
+              background: saving ? dimmed : accent,
               border: "none",
               borderRadius: 10,
               color: "#081018",
               fontSize: 13,
               fontWeight: 700,
               padding: "9px 22px",
-              cursor: "pointer",
+              cursor: saving ? "not-allowed" : "pointer",
             }}>
-              Save Settings
+              {saving ? "Saving…" : "Save Settings"}
             </button>
           </div>
         </div>
@@ -378,7 +409,7 @@ export default function SystemSettingsPage() {
                 />
               </FieldRow>
               <FieldRow label="Sandbox Mode" hint="Isolate student code in a secure container">
-                <Toggle value={execution.sandboxEnabled} onChange={(v) => patch("execution.sandboxEnabled", v)} />
+                <Toggle value={!!execution.sandboxEnabled} onChange={(v) => patch("execution.sandboxEnabled", v)} />
               </FieldRow>
             </SectionCard>
 
@@ -399,16 +430,16 @@ export default function SystemSettingsPage() {
                 />
               </FieldRow>
               <FieldRow label="Allow Custom Test Cases" hint="Students can add their own private test cases">
-                <Toggle value={testing.allowCustomTestCases} onChange={(v) => patch("testing.allowCustomTestCases", v)} />
+                <Toggle value={!!testing.allowCustomTestCases} onChange={(v) => patch("testing.allowCustomTestCases", v)} />
               </FieldRow>
               <FieldRow label="Show Test Output to Student" hint="Display actual vs. expected on failed cases">
-                <Toggle value={testing.showTestOutputToStudent} onChange={(v) => patch("testing.showTestOutputToStudent", v)} />
+                <Toggle value={!!testing.showTestOutputToStudent} onChange={(v) => patch("testing.showTestOutputToStudent", v)} />
               </FieldRow>
               <FieldRow label="Partial Credit" hint="Award partial score for partially-passing submissions">
-                <Toggle value={testing.partialCreditEnabled} onChange={(v) => patch("testing.partialCreditEnabled", v)} />
+                <Toggle value={!!testing.partialCreditEnabled} onChange={(v) => patch("testing.partialCreditEnabled", v)} />
               </FieldRow>
               <FieldRow label="Auto-Grade on Submit" hint="Run test suite immediately on submission">
-                <Toggle value={testing.autoGradeOnSubmit} onChange={(v) => patch("testing.autoGradeOnSubmit", v)} />
+                <Toggle value={!!testing.autoGradeOnSubmit} onChange={(v) => patch("testing.autoGradeOnSubmit", v)} />
               </FieldRow>
             </SectionCard>
           </div>
@@ -437,7 +468,7 @@ export default function SystemSettingsPage() {
                       {lang.label}
                     </span>
                   </div>
-                  <Toggle value={lang.enabled} onChange={() => toggleLanguage(lang.id)} />
+                  <Toggle value={!!lang.enabled} onChange={() => toggleLanguage(lang.id)} />
                 </div>
               ))}
               <div style={{ marginTop: 12, fontSize: 11, color: dimmed }}>
@@ -450,7 +481,7 @@ export default function SystemSettingsPage() {
               <FieldRow label="Judge API URL" hint="Endpoint for code execution service">
                 <input
                   type="text"
-                  value={api.judgeApiUrl}
+                  value={apiSettings.judgeApiUrl || ""}
                   onChange={(e) => patch("api.judgeApiUrl", e.target.value)}
                   style={{
                     width: 260,
@@ -467,18 +498,18 @@ export default function SystemSettingsPage() {
               </FieldRow>
               <FieldRow label="Judge API Key" hint="Secret key for the execution backend">
                 <ApiKeyField
-                  value={api.judgeApiKey}
+                  value={apiSettings.judgeApiKey || ""}
                   onChange={(v) => patch("api.judgeApiKey", v)}
                 />
               </FieldRow>
               <FieldRow label="AI Assistant" hint="Enable AI code hints for students">
-                <Toggle value={api.aiAssistEnabled} onChange={(v) => patch("api.aiAssistEnabled", v)} />
+                <Toggle value={!!apiSettings.aiAssistEnabled} onChange={(v) => patch("api.aiAssistEnabled", v)} />
               </FieldRow>
-              {api.aiAssistEnabled && (
+              {apiSettings.aiAssistEnabled && (
                 <>
                   <FieldRow label="AI Model" hint="Model used for code assistance">
                     <select
-                      value={api.aiAssistModel}
+                      value={apiSettings.aiAssistModel || "gpt-4o"}
                       onChange={(e) => patch("api.aiAssistModel", e.target.value)}
                       style={{
                         background: "#0f1b33",
@@ -499,7 +530,7 @@ export default function SystemSettingsPage() {
                   </FieldRow>
                   <FieldRow label="AI API Key" hint="API key for the selected AI model provider">
                     <ApiKeyField
-                      value={api.aiAssistApiKey}
+                      value={apiSettings.aiAssistApiKey || ""}
                       onChange={(v) => patch("api.aiAssistApiKey", v)}
                     />
                   </FieldRow>
@@ -510,22 +541,22 @@ export default function SystemSettingsPage() {
             {/* Notification Settings */}
             <SectionCard title="Notification Settings" icon="🔔">
               <FieldRow label="Email Notifications" hint="Global toggle for all outbound emails">
-                <Toggle value={notifications.emailNotificationsEnabled} onChange={(v) => patch("notifications.emailNotificationsEnabled", v)} />
+                <Toggle value={!!notifications.emailNotificationsEnabled} onChange={(v) => patch("notifications.emailNotificationsEnabled", v)} />
               </FieldRow>
               {notifications.emailNotificationsEnabled && (
                 <>
                   <FieldRow label="Submission Alerts" hint="Notify instructors when a student submits">
-                    <Toggle value={notifications.submissionAlerts} onChange={(v) => patch("notifications.submissionAlerts", v)} />
+                    <Toggle value={!!notifications.submissionAlerts} onChange={(v) => patch("notifications.submissionAlerts", v)} />
                   </FieldRow>
                   <FieldRow label="Grade Published Alerts" hint="Notify students when grades are released">
-                    <Toggle value={notifications.gradePublishedAlerts} onChange={(v) => patch("notifications.gradePublishedAlerts", v)} />
+                    <Toggle value={!!notifications.gradePublishedAlerts} onChange={(v) => patch("notifications.gradePublishedAlerts", v)} />
                   </FieldRow>
                   <FieldRow label="System Alerts" hint="Send critical system event emails to admins">
-                    <Toggle value={notifications.systemAlerts} onChange={(v) => patch("notifications.systemAlerts", v)} />
+                    <Toggle value={!!notifications.systemAlerts} onChange={(v) => patch("notifications.systemAlerts", v)} />
                   </FieldRow>
                   <FieldRow label="Digest Frequency" hint="How often to batch non-urgent notifications">
                     <select
-                      value={notifications.digestFrequency}
+                      value={notifications.digestFrequency || "daily"}
                       onChange={(e) => patch("notifications.digestFrequency", e.target.value)}
                       style={{
                         background: "#0f1b33",

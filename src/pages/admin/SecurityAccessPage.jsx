@@ -1,9 +1,6 @@
 import { useState, useEffect } from "react";
 import AdminLayout from "../../components/layout/AdminLayout";
-
-// ─── Storage keys ─────────────────────────────────────────────────────────────
-const SECURITY_KEY = "labtrack_security";
-const AUDIT_KEY    = "labtrack_audit_logs";
+import { api } from "../../utils/api";
 
 // ─── Defaults ─────────────────────────────────────────────────────────────────
 const DEFAULT_PERMISSIONS = {
@@ -31,24 +28,24 @@ const DEFAULT_PERMISSIONS = {
 };
 
 const PERMISSION_LABELS = {
-  viewOwnSubmissions:    { label: "View Own Submissions",    group: "Submissions" },
-  editOwnSubmissions:    { label: "Edit Own Submissions",    group: "Submissions" },
-  viewOtherSubmissions:  { label: "View Others' Submissions",group: "Submissions" },
-  viewAllSubmissions:    { label: "View All Submissions",    group: "Submissions" },
-  viewGrades:            { label: "View Grades",             group: "Grading" },
-  gradeLabs:             { label: "Grade Labs",              group: "Grading" },
-  accessAnalytics:       { label: "Access Analytics",        group: "Grading" },
-  runPlagiarism:         { label: "Run Plagiarism Check",    group: "Grading" },
-  downloadLabFiles:      { label: "Download Lab Files",      group: "Labs" },
-  createLabs:            { label: "Create/Edit Labs",        group: "Labs" },
-  manageSections:        { label: "Manage Sections",         group: "Labs" },
-  viewLeaderboard:       { label: "View Leaderboard",        group: "Social" },
-  postComments:          { label: "Post Comments",           group: "Social" },
-  manageUsers:           { label: "Manage Users",            group: "Administration" },
-  manageSystem:          { label: "Manage System Settings",  group: "Administration" },
-  viewAuditLogs:         { label: "View Audit Logs",         group: "Administration" },
-  manageSecurity:        { label: "Manage Security",         group: "Administration" },
-  backupData:            { label: "Backup & Restore Data",   group: "Administration" },
+  viewOwnSubmissions:    { label: "View Own Submissions",     group: "Submissions" },
+  editOwnSubmissions:    { label: "Edit Own Submissions",     group: "Submissions" },
+  viewOtherSubmissions:  { label: "View Others' Submissions", group: "Submissions" },
+  viewAllSubmissions:    { label: "View All Submissions",     group: "Submissions" },
+  viewGrades:            { label: "View Grades",              group: "Grading" },
+  gradeLabs:             { label: "Grade Labs",               group: "Grading" },
+  accessAnalytics:       { label: "Access Analytics",         group: "Grading" },
+  runPlagiarism:         { label: "Run Plagiarism Check",     group: "Grading" },
+  downloadLabFiles:      { label: "Download Lab Files",       group: "Labs" },
+  createLabs:            { label: "Create/Edit Labs",         group: "Labs" },
+  manageSections:        { label: "Manage Sections",          group: "Labs" },
+  viewLeaderboard:       { label: "View Leaderboard",         group: "Social" },
+  postComments:          { label: "Post Comments",            group: "Social" },
+  manageUsers:           { label: "Manage Users",             group: "Administration" },
+  manageSystem:          { label: "Manage System Settings",   group: "Administration" },
+  viewAuditLogs:         { label: "View Audit Logs",          group: "Administration" },
+  manageSecurity:        { label: "Manage Security",          group: "Administration" },
+  backupData:            { label: "Backup & Restore Data",    group: "Administration" },
 };
 
 const DEFAULT_SECURITY = {
@@ -66,28 +63,6 @@ const DEFAULT_SECURITY = {
   },
 };
 
-const SEED_AUDIT = [
-  { id: "a1", actor: "admin@kfupm.edu.sa", action: "User Created",        target: "newstudent@kfupm.edu.sa", ip: "10.0.1.5",  ts: Date.now() - 1000*60*12,  severity: "info" },
-  { id: "a2", actor: "admin@kfupm.edu.sa", action: "Role Changed",        target: "user123@kfupm.edu.sa (student → instructor)", ip: "10.0.1.5",  ts: Date.now() - 1000*60*38,  severity: "warn" },
-  { id: "a3", actor: "system",             action: "Failed Login (×5)",   target: "unknown@kfupm.edu.sa",    ip: "45.33.12.77", ts: Date.now() - 1000*60*55,  severity: "error" },
-  { id: "a4", actor: "admin@kfupm.edu.sa", action: "Settings Updated",    target: "System Settings",          ip: "10.0.1.5",  ts: Date.now() - 1000*60*90,  severity: "info" },
-  { id: "a5", actor: "admin@kfupm.edu.sa", action: "User Deactivated",    target: "olduser@kfupm.edu.sa",    ip: "10.0.1.5",  ts: Date.now() - 1000*60*150, severity: "warn" },
-  { id: "a6", actor: "system",             action: "Backup Completed",    target: "/backups/2026-04-10",      ip: "—",         ts: Date.now() - 1000*60*300, severity: "info" },
-  { id: "a7", actor: "instructor1@kfupm.edu.sa", action: "Lab Published", target: "Lab: Binary Trees",       ip: "10.0.2.11", ts: Date.now() - 1000*60*420, severity: "info" },
-  { id: "a8", actor: "system",             action: "IP Blocked",          target: "185.220.101.55",           ip: "—",         ts: Date.now() - 1000*60*600, severity: "error" },
-];
-
-function loadSecurity() {
-  try { const r = localStorage.getItem(SECURITY_KEY); if (r) return JSON.parse(r); } catch (_) {}
-  localStorage.setItem(SECURITY_KEY, JSON.stringify(DEFAULT_SECURITY));
-  return structuredClone(DEFAULT_SECURITY);
-}
-function loadAudit() {
-  try { const r = localStorage.getItem(AUDIT_KEY); if (r) return JSON.parse(r); } catch (_) {}
-  localStorage.setItem(AUDIT_KEY, JSON.stringify(SEED_AUDIT));
-  return SEED_AUDIT;
-}
-
 // ─── Style tokens ─────────────────────────────────────────────────────────────
 const bg      = "#080f1e";
 const card    = "#0b1424";
@@ -101,7 +76,7 @@ const danger  = "#f87171";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function ago(ts) {
-  const m = Math.floor((Date.now() - ts) / 60000);
+  const m = Math.floor((Date.now() - new Date(ts).getTime()) / 60000);
   if (m < 1) return "just now";
   if (m < 60) return `${m}m ago`;
   const h = Math.floor(m / 60);
@@ -287,13 +262,39 @@ function IpRangeEditor({ ranges, onChange }) {
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function SecurityAccessPage() {
-  const [perms, setPerms]       = useState(() => structuredClone(DEFAULT_PERMISSIONS));
-  const [security, setSecurity] = useState(loadSecurity);
-  const [audit, setAudit]       = useState(loadAudit);
-  const [toast, setToast]       = useState({ msg: "", type: "success" });
+  const [perms, setPerms]         = useState(() => structuredClone(DEFAULT_PERMISSIONS));
+  const [security, setSecurity]   = useState(structuredClone(DEFAULT_SECURITY));
+  const [audit, setAudit]         = useState([]);
+  const [toast, setToast]         = useState({ msg: "", type: "success" });
   const [activeTab, setActiveTab] = useState("permissions");
   const [auditFilter, setAuditFilter] = useState("all");
-  const [unsaved, setUnsaved]   = useState(false);
+  const [unsaved, setUnsaved]     = useState(false);
+  const [loading, setLoading]     = useState(true);
+  const [saving, setSaving]       = useState(false);
+
+  useEffect(() => {
+    async function load() {
+      try {
+        const [sec, logs] = await Promise.all([
+          api.get("/admin/security/settings"),
+          api.get("/admin/audit-logs"),
+        ]);
+        setSecurity({
+          ...DEFAULT_SECURITY,
+          ...sec,
+          twoFactorRequired: { ...DEFAULT_SECURITY.twoFactorRequired, ...(sec.twoFactorRequired || {}) },
+          sessionTimeoutMin: { ...DEFAULT_SECURITY.sessionTimeoutMin, ...(sec.sessionTimeoutMin || {}) },
+          examMode: { ...DEFAULT_SECURITY.examMode, ...(sec.examMode || {}) },
+        });
+        setAudit(Array.isArray(logs) ? logs : []);
+      } catch (err) {
+        setToast({ msg: `Load failed: ${err.message}`, type: "error" });
+      } finally {
+        setLoading(false);
+      }
+    }
+    load();
+  }, []);
 
   useEffect(() => {
     if (toast.msg) {
@@ -322,35 +323,36 @@ export default function SecurityAccessPage() {
       return next;
     });
     setUnsaved(true);
-    appendAudit(`Permission Changed: ${role}.${key} → ${value ? "granted" : "revoked"}`);
   }
 
-  function saveAll() {
-    localStorage.setItem(SECURITY_KEY, JSON.stringify(security));
-    setUnsaved(false);
-    appendAudit("Security Settings Updated");
-    setToast({ msg: "✓ Security settings saved", type: "success" });
+  async function saveAll() {
+    setSaving(true);
+    try {
+      const updated = await api.patch("/admin/security/settings", security);
+      setSecurity({
+        ...DEFAULT_SECURITY,
+        ...updated,
+        twoFactorRequired: { ...DEFAULT_SECURITY.twoFactorRequired, ...(updated.twoFactorRequired || {}) },
+        sessionTimeoutMin: { ...DEFAULT_SECURITY.sessionTimeoutMin, ...(updated.sessionTimeoutMin || {}) },
+        examMode: { ...DEFAULT_SECURITY.examMode, ...(updated.examMode || {}) },
+      });
+      setUnsaved(false);
+      setToast({ msg: "✓ Security settings saved", type: "success" });
+    } catch (err) {
+      setToast({ msg: `Save failed: ${err.message}`, type: "error" });
+    } finally {
+      setSaving(false);
+    }
   }
 
-  function appendAudit(action) {
-    const entry = {
-      id: `a_${Date.now()}`,
-      actor: "admin@kfupm.edu.sa",
-      action,
-      target: "Security Module",
-      ip: "10.0.1.5",
-      ts: Date.now(),
-      severity: "info",
-    };
-    const next = [entry, ...audit];
-    setAudit(next);
-    localStorage.setItem(AUDIT_KEY, JSON.stringify(next));
-  }
-
-  function clearAudit() {
-    setAudit([]);
-    localStorage.setItem(AUDIT_KEY, JSON.stringify([]));
-    setToast({ msg: "Audit log cleared", type: "warn" });
+  async function clearAudit() {
+    try {
+      await api.delete("/admin/audit-logs");
+      setAudit([]);
+      setToast({ msg: "Audit log cleared", type: "warn" });
+    } catch (err) {
+      setToast({ msg: `Clear failed: ${err.message}`, type: "error" });
+    }
   }
 
   const filteredAudit = auditFilter === "all"
@@ -358,6 +360,16 @@ export default function SecurityAccessPage() {
     : audit.filter((a) => a.severity === auditFilter);
 
   const ROLES = ["admin", "instructor", "student"];
+
+  if (loading) {
+    return (
+      <AdminLayout>
+        <div style={{ background: bg, minHeight: "100vh", padding: "32px 36px", color: muted, fontSize: 14 }}>
+          Loading…
+        </div>
+      </AdminLayout>
+    );
+  }
 
   return (
     <AdminLayout>
@@ -373,11 +385,11 @@ export default function SecurityAccessPage() {
           </div>
           <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
             {unsaved && <span style={{ fontSize: 11, color: warn, fontWeight: 600 }}>● Unsaved changes</span>}
-            <button type="button" onClick={saveAll} style={{
-              background: accent, border: "none", borderRadius: 10,
+            <button type="button" onClick={saveAll} disabled={saving} style={{
+              background: saving ? dimmed : accent, border: "none", borderRadius: 10,
               color: "#081018", fontSize: 13, fontWeight: 700,
-              padding: "9px 22px", cursor: "pointer",
-            }}>Save Settings</button>
+              padding: "9px 22px", cursor: saving ? "not-allowed" : "pointer",
+            }}>{saving ? "Saving…" : "Save Settings"}</button>
           </div>
         </div>
 
@@ -415,12 +427,12 @@ export default function SecurityAccessPage() {
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
                       <span style={{ fontSize: 13, fontWeight: 700, color: "#e2e8f0", textTransform: "capitalize" }}>{role}</span>
                       <Toggle
-                        value={security.twoFactorRequired[role]}
+                        value={!!security.twoFactorRequired?.[role]}
                         onChange={(v) => patchSecurity(`twoFactorRequired.${role}`, v)}
                       />
                     </div>
                     <div style={{ fontSize: 11, color: muted }}>
-                      {security.twoFactorRequired[role] ? "2FA required on login" : "2FA optional"}
+                      {security.twoFactorRequired?.[role] ? "2FA required on login" : "2FA optional"}
                     </div>
                   </div>
                 ))}
@@ -435,7 +447,7 @@ export default function SecurityAccessPage() {
                     <div key={role} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
                       <span style={{ fontSize: 13, color: "#cbd5e1", textTransform: "capitalize" }}>{role}</span>
                       <NumberInput
-                        value={security.sessionTimeoutMin[role]}
+                        value={security.sessionTimeoutMin?.[role] ?? 60}
                         onChange={(v) => patchSecurity(`sessionTimeoutMin.${role}`, v)}
                         min={5} max={1440} unit="min"
                       />
@@ -449,28 +461,28 @@ export default function SecurityAccessPage() {
                       <div style={{ fontSize: 13, color: "#cbd5e1" }}>Max Login Attempts</div>
                       <div style={{ fontSize: 11, color: muted }}>Before account lockout</div>
                     </div>
-                    <NumberInput value={security.maxLoginAttempts} onChange={(v) => patchSecurity("maxLoginAttempts", v)} min={3} max={10} unit="tries" />
+                    <NumberInput value={security.maxLoginAttempts ?? 5} onChange={(v) => patchSecurity("maxLoginAttempts", v)} min={3} max={10} unit="tries" />
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
                     <div>
                       <div style={{ fontSize: 13, color: "#cbd5e1" }}>Lockout Duration</div>
                       <div style={{ fontSize: 11, color: muted }}>After max attempts reached</div>
                     </div>
-                    <NumberInput value={security.lockoutDurationMin} onChange={(v) => patchSecurity("lockoutDurationMin", v)} min={5} max={1440} unit="min" />
+                    <NumberInput value={security.lockoutDurationMin ?? 15} onChange={(v) => patchSecurity("lockoutDurationMin", v)} min={5} max={1440} unit="min" />
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
                     <div>
                       <div style={{ fontSize: 13, color: "#cbd5e1" }}>Password Expiry</div>
                       <div style={{ fontSize: 11, color: muted }}>Force reset after N days (0 = never)</div>
                     </div>
-                    <NumberInput value={security.passwordExpiryDays} onChange={(v) => patchSecurity("passwordExpiryDays", v)} min={0} max={365} unit="days" />
+                    <NumberInput value={security.passwordExpiryDays ?? 90} onChange={(v) => patchSecurity("passwordExpiryDays", v)} min={0} max={365} unit="days" />
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <div>
                       <div style={{ fontSize: 13, color: "#cbd5e1" }}>Require Strong Password</div>
                       <div style={{ fontSize: 11, color: muted }}>Upper, lower, number, 8+ chars</div>
                     </div>
-                    <Toggle value={security.requireStrongPassword} onChange={(v) => patchSecurity("requireStrongPassword", v)} />
+                    <Toggle value={!!security.requireStrongPassword} onChange={(v) => patchSecurity("requireStrongPassword", v)} />
                   </div>
                 </div>
               </div>
@@ -486,10 +498,10 @@ export default function SecurityAccessPage() {
                 <div style={{ fontSize: 14, fontWeight: 700, color: "#e2e8f0", marginBottom: 4 }}>Enable Exam Mode</div>
                 <div style={{ fontSize: 12, color: muted }}>Restricts platform access to approved IP ranges only. Use during proctored exams.</div>
               </div>
-              <Toggle value={security.examMode.enabled} onChange={(v) => patchSecurity("examMode.enabled", v)} />
+              <Toggle value={!!security.examMode?.enabled} onChange={(v) => patchSecurity("examMode.enabled", v)} />
             </div>
 
-            {security.examMode.enabled && (
+            {security.examMode?.enabled && (
               <div style={{
                 background: "rgba(251,191,36,0.06)", border: `1px solid ${warn}33`,
                 borderRadius: 10, padding: "12px 16px", marginBottom: 20, fontSize: 12, color: warn,
@@ -505,20 +517,20 @@ export default function SecurityAccessPage() {
                     <div style={{ fontSize: 13, color: "#cbd5e1", fontWeight: 600 }}>Block VPN Access</div>
                     <div style={{ fontSize: 11, color: muted }}>Detect and reject VPN/proxy connections</div>
                   </div>
-                  <Toggle value={security.examMode.blockVPN} onChange={(v) => patchSecurity("examMode.blockVPN", v)} />
+                  <Toggle value={!!security.examMode?.blockVPN} onChange={(v) => patchSecurity("examMode.blockVPN", v)} />
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 16px", background: "#0a1628", border: `1px solid ${border}`, borderRadius: 10 }}>
                   <div>
                     <div style={{ fontSize: 13, color: "#cbd5e1", fontWeight: 600 }}>Browser Lock</div>
                     <div style={{ fontSize: 11, color: muted }}>Prevent tab switching and copy-paste</div>
                   </div>
-                  <Toggle value={security.examMode.lockBrowser} onChange={(v) => patchSecurity("examMode.lockBrowser", v)} />
+                  <Toggle value={!!security.examMode?.lockBrowser} onChange={(v) => patchSecurity("examMode.lockBrowser", v)} />
                 </div>
               </div>
               <div>
                 <div style={{ fontSize: 13, fontWeight: 600, color: "#e2e8f0", marginBottom: 10 }}>Allowed IP Ranges</div>
                 <IpRangeEditor
-                  ranges={security.examMode.allowedIpRanges}
+                  ranges={security.examMode?.allowedIpRanges || []}
                   onChange={(v) => patchSecurity("examMode.allowedIpRanges", v)}
                 />
               </div>
@@ -549,33 +561,42 @@ export default function SecurityAccessPage() {
               <div style={{ textAlign: "center", padding: "32px 0", color: muted, fontSize: 13 }}>No audit entries found</div>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                {filteredAudit.map((entry) => (
-                  <div key={entry.id} style={{
-                    display: "grid",
-                    gridTemplateColumns: "90px 1fr 160px 90px 72px",
-                    alignItems: "center", gap: 12,
-                    padding: "10px 14px",
-                    background: entry.severity !== "info" ? (entry.severity === "error" ? "rgba(248,113,113,0.05)" : "rgba(251,191,36,0.05)") : "transparent",
-                    border: `1px solid ${entry.severity !== "info" ? severityColor(entry.severity) + "22" : border}`,
-                    borderRadius: 10,
-                  }}>
-                    <span style={{
-                      background: entry.severity === "error" ? "rgba(248,113,113,0.12)" : entry.severity === "warn" ? "rgba(251,191,36,0.12)" : "rgba(34,211,238,0.08)",
-                      color: severityColor(entry.severity),
-                      borderRadius: 6, fontSize: 10, fontWeight: 700,
-                      padding: "3px 8px", textAlign: "center", textTransform: "uppercase",
-                    }}>{entry.severity}</span>
-                    <div>
-                      <div style={{ fontSize: 12, fontWeight: 600, color: "#e2e8f0" }}>{entry.action}</div>
-                      <div style={{ fontSize: 11, color: muted }}>on <span style={{ color: accent }}>{entry.target}</span></div>
+                {filteredAudit.map((entry) => {
+                  const rowBg = entry.severity !== "info"
+                    ? (entry.severity === "error" ? "rgba(248,113,113,0.05)" : "rgba(251,191,36,0.05)")
+                    : "transparent";
+                  const rowBorder = entry.severity !== "info"
+                    ? `1px solid ${severityColor(entry.severity)}22`
+                    : `1px solid ${border}`;
+                  const actorLabel = entry.actor?.email || entry.actor?.fullName || entry.actor || "—";
+                  return (
+                    <div key={entry.id} style={{
+                      display: "grid",
+                      gridTemplateColumns: "90px 1fr 160px 90px 72px",
+                      alignItems: "center", gap: 12,
+                      padding: "10px 14px",
+                      background: rowBg,
+                      border: rowBorder,
+                      borderRadius: 10,
+                    }}>
+                      <span style={{
+                        background: entry.severity === "error" ? "rgba(248,113,113,0.12)" : entry.severity === "warn" ? "rgba(251,191,36,0.12)" : "rgba(34,211,238,0.08)",
+                        color: severityColor(entry.severity),
+                        borderRadius: 6, fontSize: 10, fontWeight: 700,
+                        padding: "3px 8px", textAlign: "center", textTransform: "uppercase",
+                      }}>{entry.severity}</span>
+                      <div>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: "#e2e8f0" }}>{entry.action}</div>
+                        <div style={{ fontSize: 11, color: muted }}>on <span style={{ color: accent }}>{entry.target}</span></div>
+                      </div>
+                      <div style={{ fontSize: 11, color: muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {actorLabel}
+                      </div>
+                      <div style={{ fontSize: 11, fontFamily: "monospace", color: dimmed }}>{entry.ip || "—"}</div>
+                      <div style={{ fontSize: 11, color: dimmed, textAlign: "right" }}>{ago(entry.ts)}</div>
                     </div>
-                    <div style={{ fontSize: 11, color: muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {entry.actor}
-                    </div>
-                    <div style={{ fontSize: 11, fontFamily: "monospace", color: dimmed }}>{entry.ip}</div>
-                    <div style={{ fontSize: 11, color: dimmed, textAlign: "right" }}>{ago(entry.ts)}</div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </SectionCard>

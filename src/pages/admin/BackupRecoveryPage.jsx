@@ -1,44 +1,20 @@
 import { useState, useEffect } from "react";
 import AdminLayout from "../../components/layout/AdminLayout";
-
-// ─── Storage keys ─────────────────────────────────────────────────────────────
-const BACKUP_KEY    = "labtrack_backups";
-const SCHEDULE_KEY  = "labtrack_backup_schedule";
-
-// ─── Seed data ────────────────────────────────────────────────────────────────
-const SEED_BACKUPS = [
-  { id: "bk1", name: "auto_2026-04-11_02-00", type: "auto",   scope: "full",        size: "2.14 GB", status: "success", ts: Date.now() - 1000*60*60*8,    retention: 30 },
-  { id: "bk2", name: "auto_2026-04-10_02-00", type: "auto",   scope: "full",        size: "2.11 GB", status: "success", ts: Date.now() - 1000*60*60*32,   retention: 30 },
-  { id: "bk3", name: "manual_pre-migration",  type: "manual", scope: "full",        size: "2.09 GB", status: "success", ts: Date.now() - 1000*60*60*56,   retention: 90 },
-  { id: "bk4", name: "auto_2026-04-09_02-00", type: "auto",   scope: "full",        size: "2.07 GB", status: "success", ts: Date.now() - 1000*60*60*80,   retention: 30 },
-  { id: "bk5", name: "auto_2026-04-08_02-00", type: "auto",   scope: "users-only",  size: "0.34 GB", status: "failed",  ts: Date.now() - 1000*60*60*104,  retention: 30 },
-  { id: "bk6", name: "auto_2026-04-07_02-00", type: "auto",   scope: "full",        size: "2.03 GB", status: "success", ts: Date.now() - 1000*60*60*128,  retention: 30 },
-];
+import { api } from "../../utils/api";
 
 const DEFAULT_SCHEDULE = {
   enabled: true,
-  frequency: "daily",       // daily | weekly | monthly
+  frequency: "daily",
   time: "02:00",
   dayOfWeek: "sunday",
   dayOfMonth: 1,
-  scope: "full",            // full | users-only | courses-only | submissions-only
+  scope: "full",
   retentionDays: 30,
-  destination: "local",     // local | s3 | ftp
+  destination: "local",
   s3Bucket: "labtrack-backups",
   notifyOnFailure: true,
   notifyOnSuccess: false,
 };
-
-function loadBackups() {
-  try { const r = localStorage.getItem(BACKUP_KEY); if (r) return JSON.parse(r); } catch (_) {}
-  localStorage.setItem(BACKUP_KEY, JSON.stringify(SEED_BACKUPS));
-  return SEED_BACKUPS;
-}
-function loadSchedule() {
-  try { const r = localStorage.getItem(SCHEDULE_KEY); if (r) return JSON.parse(r); } catch (_) {}
-  localStorage.setItem(SCHEDULE_KEY, JSON.stringify(DEFAULT_SCHEDULE));
-  return structuredClone(DEFAULT_SCHEDULE);
-}
 
 // ─── Style tokens ─────────────────────────────────────────────────────────────
 const bg      = "#080f1e";
@@ -57,7 +33,7 @@ function fmtTs(ts) {
   return new Date(ts).toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
 }
 function ago(ts) {
-  const m = Math.floor((Date.now() - ts) / 60000);
+  const m = Math.floor((Date.now() - new Date(ts).getTime()) / 60000);
   if (m < 60) return `${m}m ago`;
   const h = Math.floor(m / 60);
   if (h < 24) return `${h}h ago`;
@@ -157,7 +133,7 @@ function Toast({ msg, type, onDismiss }) {
 }
 
 // ─── Manual Backup Modal ──────────────────────────────────────────────────────
-function ManualBackupModal({ onClose, onConfirm }) {
+function ManualBackupModal({ onClose, onConfirm, loading }) {
   const [name, setName]   = useState(`manual_${new Date().toISOString().slice(0,10)}`);
   const [scope, setScope] = useState("full");
   const [retention, setRetention] = useState(90);
@@ -205,10 +181,10 @@ function ManualBackupModal({ onClose, onConfirm }) {
             flex: 1, background: "transparent", border: `1px solid ${border}`,
             borderRadius: 10, color: muted, fontSize: 13, fontWeight: 600, padding: "11px 0", cursor: "pointer",
           }}>Cancel</button>
-          <button type="button" onClick={() => onConfirm({ name: name.trim() || `manual_${Date.now()}`, scope, retention })} style={{
-            flex: 2, background: accent, border: "none",
-            borderRadius: 10, color: "#081018", fontSize: 13, fontWeight: 700, padding: "11px 0", cursor: "pointer",
-          }}>Start Backup</button>
+          <button type="button" disabled={loading} onClick={() => onConfirm({ name: name.trim() || `manual_${Date.now()}`, scope, retention })} style={{
+            flex: 2, background: loading ? dimmed : accent, border: "none",
+            borderRadius: 10, color: "#081018", fontSize: 13, fontWeight: 700, padding: "11px 0", cursor: loading ? "not-allowed" : "pointer",
+          }}>{loading ? "Starting…" : "Start Backup"}</button>
         </div>
       </div>
     </div>
@@ -260,13 +236,32 @@ function RestoreModal({ backup, onClose, onConfirm }) {
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function BackupRecoveryPage() {
-  const [backups, setBackups]       = useState(loadBackups);
-  const [schedule, setSchedule]     = useState(loadSchedule);
+  const [backups, setBackups]       = useState([]);
+  const [schedule, setSchedule]     = useState(DEFAULT_SCHEDULE);
   const [toast, setToast]           = useState({ msg: "", type: "success" });
   const [showManual, setShowManual] = useState(false);
   const [restoreTarget, setRestoreTarget] = useState(null);
-  const [running, setRunning]       = useState(null); // id of in-progress backup
+  const [triggering, setTriggering] = useState(false);
   const [unsavedSched, setUnsavedSched] = useState(false);
+  const [loading, setLoading]       = useState(true);
+
+  useEffect(() => {
+    async function load() {
+      try {
+        const [bks, sched] = await Promise.all([
+          api.get("/admin/system/backups"),
+          api.get("/admin/system/backup-schedule"),
+        ]);
+        setBackups(Array.isArray(bks) ? bks : []);
+        setSchedule(sched || DEFAULT_SCHEDULE);
+      } catch (err) {
+        setToast({ msg: `Failed to load: ${err.message}`, type: "error" });
+      } finally {
+        setLoading(false);
+      }
+    }
+    load();
+  }, []);
 
   useEffect(() => {
     if (toast.msg) {
@@ -275,15 +270,15 @@ export default function BackupRecoveryPage() {
     }
   }, [toast]);
 
-  function saveBackups(next) {
-    setBackups(next);
-    localStorage.setItem(BACKUP_KEY, JSON.stringify(next));
-  }
-
-  function saveSchedule() {
-    localStorage.setItem(SCHEDULE_KEY, JSON.stringify(schedule));
-    setUnsavedSched(false);
-    setToast({ msg: "✓ Backup schedule saved", type: "success" });
+  async function saveSchedule() {
+    try {
+      const updated = await api.patch("/admin/system/backup-schedule", schedule);
+      setSchedule(updated);
+      setUnsavedSched(false);
+      setToast({ msg: "✓ Backup schedule saved", type: "success" });
+    } catch (err) {
+      setToast({ msg: `Save failed: ${err.message}`, type: "error" });
+    }
   }
 
   function patchSchedule(key, value) {
@@ -291,33 +286,28 @@ export default function BackupRecoveryPage() {
     setUnsavedSched(true);
   }
 
-  function startManualBackup({ name, scope, retention }) {
-    setShowManual(false);
-    const id = `bk_${Date.now()}`;
-    const entry = { id, name, type: "manual", scope, size: "—", status: "running", ts: Date.now(), retention };
-    const next = [entry, ...backups];
-    saveBackups(next);
-    setRunning(id);
-    setToast({ msg: "⏳ Backup in progress…", type: "warn" });
-
-    // Simulate completion after 3 s
-    setTimeout(() => {
-      const size = scope === "full" ? `${(2.0 + Math.random() * 0.3).toFixed(2)} GB`
-                 : scope === "users-only" ? `${(0.3 + Math.random() * 0.1).toFixed(2)} GB`
-                 : `${(0.8 + Math.random() * 0.4).toFixed(2)} GB`;
-      setBackups((prev) => {
-        const updated = prev.map((b) => b.id === id ? { ...b, status: "success", size } : b);
-        localStorage.setItem(BACKUP_KEY, JSON.stringify(updated));
-        return updated;
-      });
-      setRunning(null);
-      setToast({ msg: "✓ Backup completed successfully", type: "success" });
-    }, 3000);
+  async function startManualBackup({ name, scope, retention }) {
+    setTriggering(true);
+    try {
+      const saved = await api.post("/admin/system/backups/trigger", { name, scope, retention });
+      setBackups((prev) => [saved, ...prev]);
+      setShowManual(false);
+      setToast({ msg: "✓ Backup created successfully", type: "success" });
+    } catch (err) {
+      setToast({ msg: `Backup failed: ${err.message}`, type: "error" });
+    } finally {
+      setTriggering(false);
+    }
   }
 
-  function deleteBackup(id) {
-    saveBackups(backups.filter((b) => b.id !== id));
-    setToast({ msg: "Backup deleted", type: "success" });
+  async function deleteBackup(id) {
+    try {
+      await api.delete(`/admin/system/backups/${id}`);
+      setBackups((prev) => prev.filter((b) => b.id !== id));
+      setToast({ msg: "Backup deleted", type: "success" });
+    } catch (err) {
+      setToast({ msg: `Delete failed: ${err.message}`, type: "error" });
+    }
   }
 
   function confirmRestore() {
@@ -325,11 +315,21 @@ export default function BackupRecoveryPage() {
     setToast({ msg: `✓ Platform restored from "${restoreTarget.name}"`, type: "success" });
   }
 
-  const successCount = backups.filter((b) => b.status === "success").length;
+  const successCount = backups.filter((b) => b.status === "success" || b.status === "completed").length;
   const failedCount  = backups.filter((b) => b.status === "failed").length;
-  const lastSuccess  = backups.find((b) => b.status === "success");
-  const totalSize    = backups.filter((b) => b.status === "success")
+  const lastSuccess  = backups.find((b) => b.status === "success" || b.status === "completed");
+  const totalSize    = backups.filter((b) => b.status === "success" || b.status === "completed")
     .reduce((s, b) => s + parseFloat(b.size || "0"), 0).toFixed(1);
+
+  if (loading) {
+    return (
+      <AdminLayout>
+        <div style={{ background: bg, minHeight: "100vh", padding: "32px 36px", color: muted, fontSize: 14 }}>
+          Loading…
+        </div>
+      </AdminLayout>
+    );
+  }
 
   return (
     <AdminLayout>
@@ -372,7 +372,7 @@ export default function BackupRecoveryPage() {
               )
             }>
               <FieldRow label="Automated Backups" hint="Run backups on the configured schedule">
-                <Toggle value={schedule.enabled} onChange={(v) => patchSchedule("enabled", v)} />
+                <Toggle value={!!schedule.enabled} onChange={(v) => patchSchedule("enabled", v)} />
               </FieldRow>
 
               {schedule.enabled && (
@@ -423,10 +423,10 @@ export default function BackupRecoveryPage() {
                     </FieldRow>
                   )}
                   <FieldRow label="Notify on Failure" hint="Email admin if a scheduled backup fails">
-                    <Toggle value={schedule.notifyOnFailure} onChange={(v) => patchSchedule("notifyOnFailure", v)} />
+                    <Toggle value={!!schedule.notifyOnFailure} onChange={(v) => patchSchedule("notifyOnFailure", v)} />
                   </FieldRow>
                   <FieldRow label="Notify on Success" hint="Email admin after every successful backup">
-                    <Toggle value={schedule.notifyOnSuccess} onChange={(v) => patchSchedule("notifyOnSuccess", v)} />
+                    <Toggle value={!!schedule.notifyOnSuccess} onChange={(v) => patchSchedule("notifyOnSuccess", v)} />
                   </FieldRow>
                 </>
               )}
@@ -461,14 +461,13 @@ export default function BackupRecoveryPage() {
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                   {backups.map((b) => {
-                    const isRunning = b.id === running;
-                    const statusColor = isRunning ? warn : b.status === "success" ? success : b.status === "failed" ? danger : muted;
-                    const statusLabel = isRunning ? "running" : b.status;
+                    const statusColor = b.status === "completed" || b.status === "success" ? success : b.status === "failed" ? danger : warn;
+                    const statusLabel = b.status;
                     return (
                       <div key={b.id} style={{
                         padding: "12px 14px",
                         background: "#0a1628",
-                        border: `1px solid ${isRunning ? warn + "44" : border}`,
+                        border: `1px solid ${border}`,
                         borderRadius: 12,
                       }}>
                         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
@@ -495,28 +494,20 @@ export default function BackupRecoveryPage() {
                               {b.scope} · {b.size} · {fmtTs(b.ts)} · retain {b.retention}d
                             </div>
                           </div>
-                          {!isRunning && (
-                            <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
-                              {b.status === "success" && (
-                                <button type="button" onClick={() => setRestoreTarget(b)} style={{
-                                  background: "rgba(248,113,113,0.1)", border: `1px solid ${danger}33`,
-                                  borderRadius: 6, color: danger, fontSize: 11, fontWeight: 600,
-                                  padding: "5px 10px", cursor: "pointer",
-                                }}>Restore</button>
-                              )}
-                              <button type="button" onClick={() => deleteBackup(b.id)} style={{
-                                background: "transparent", border: `1px solid ${dimmed}`,
-                                borderRadius: 6, color: muted, fontSize: 11,
+                          <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                            {(b.status === "success" || b.status === "completed") && (
+                              <button type="button" onClick={() => setRestoreTarget(b)} style={{
+                                background: "rgba(248,113,113,0.1)", border: `1px solid ${danger}33`,
+                                borderRadius: 6, color: danger, fontSize: 11, fontWeight: 600,
                                 padding: "5px 10px", cursor: "pointer",
-                              }}>Delete</button>
-                            </div>
-                          )}
-                          {isRunning && (
-                            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                              <span style={{ width: 8, height: 8, borderRadius: "50%", background: warn, display: "inline-block", animation: "pulse 1s infinite" }} />
-                              <span style={{ fontSize: 11, color: warn }}>Running…</span>
-                            </div>
-                          )}
+                              }}>Restore</button>
+                            )}
+                            <button type="button" onClick={() => deleteBackup(b.id)} style={{
+                              background: "transparent", border: `1px solid ${dimmed}`,
+                              borderRadius: 6, color: muted, fontSize: 11,
+                              padding: "5px 10px", cursor: "pointer",
+                            }}>Delete</button>
+                          </div>
                         </div>
                       </div>
                     );
@@ -528,7 +519,7 @@ export default function BackupRecoveryPage() {
         </div>
       </div>
 
-      {showManual && <ManualBackupModal onClose={() => setShowManual(false)} onConfirm={startManualBackup} />}
+      {showManual && <ManualBackupModal onClose={() => setShowManual(false)} onConfirm={startManualBackup} loading={triggering} />}
       {restoreTarget && <RestoreModal backup={restoreTarget} onClose={() => setRestoreTarget(null)} onConfirm={confirmRestore} />}
       <Toast msg={toast.msg} type={toast.type} onDismiss={() => setToast({ msg: "", type: "success" })} />
     </AdminLayout>
