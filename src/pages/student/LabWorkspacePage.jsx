@@ -181,6 +181,51 @@ function getSubmissionPayload(data) {
   return data?.submission ?? data;
 }
 
+function normalizeTestResult(result, index) {
+  const status =
+    result?.status ||
+    (typeof result?.passed === "boolean" ? (result.passed ? "pass" : "fail") : "pending");
+  const name = result?.name || result?.description || `Test ${index + 1}`;
+  const points = result?.points ?? result?.maxPoints ?? 0;
+
+  return {
+    ...result,
+    id: result?.id || result?.testCaseId || `test-${index + 1}`,
+    name,
+    description: result?.description || name,
+    status,
+    passed: result?.passed ?? status === "pass",
+    points,
+    earned: result?.earned ?? result?.earnedPoints ?? (status === "pass" ? points : 0),
+    visible: result?.visible !== false,
+  };
+}
+
+function normalizeTestResults(results = []) {
+  return results.map((result, index) => normalizeTestResult(result, index));
+}
+
+function buildRunOutput(result, results) {
+  if (!results.length) return "No test cases are configured for this lab.";
+
+  const passedCount = result?.passed ?? results.filter((test) => test.status === "pass").length;
+  const totalCount = result?.total ?? results.length;
+  const lines = [`${passedCount}/${totalCount} test cases passed.`];
+
+  results
+    .filter((test) => test.visible !== false)
+    .forEach((test) => {
+      const icon = test.status === "pass" ? "PASS" : test.status === "fail" ? "FAIL" : "PENDING";
+      lines.push(`${icon} ${test.name}`);
+      if (test.status === "fail" && (test.expectedOutput !== undefined || test.actualOutput !== undefined)) {
+        lines.push(`  Expected: ${test.expectedOutput ?? ""}`);
+        lines.push(`  Actual: ${test.actualOutput ?? ""}`);
+      }
+    });
+
+  return lines.join("\n");
+}
+
 function buildNewFileContent(fileName) {
   const lowerName = fileName.toLowerCase();
   if (lowerName.endsWith(".py")) return `# ${fileName}\n\n# Start writing here.\n`;
@@ -334,7 +379,11 @@ export default function LabWorkspacePage() {
         setOpenFiles(labFiles);
         setActiveFile(solutionFile);
         setFileContents(contents);
-        setTestResults(submission?.testResults ?? labData.testCases ?? []);
+        const initialTestResults =
+          Array.isArray(submission?.testResults) && submission.testResults.length > 0
+            ? submission.testResults
+            : labData.testCases ?? [];
+        setTestResults(normalizeTestResults(initialTestResults));
         setProgressStatus(submission?.status ?? progress?.status ?? "not_started");
         lastSavedCodeRef.current = contents[solutionFile] ?? "";
         initialLoadCompleteRef.current = true;
@@ -354,7 +403,7 @@ export default function LabWorkspacePage() {
 
     try {
       await api.patch(`/progress/${labId}`, {
-        status: "in_progress",
+        status: "in progress",
         code: fileContents[activeFile] ?? "",
       });
       lastSavedCodeRef.current = fileContents[activeFile] ?? "";
@@ -543,29 +592,20 @@ export default function LabWorkspacePage() {
     setConsoleMeta(null);
 
     try {
-      const result = await api.post("/compile", {
+      const result = await api.post(`/student/labs/${labId}/run`, {
         code: fileContents[activeFile] ?? "",
         language: languageForFile(lab, activeFile),
-        input: "",
       });
+      const nextTestResults = normalizeTestResults(result.testResults ?? []);
+      setTestResults(nextTestResults);
 
-      const output = result.output ?? result.stdout ?? "";
-      const errOut = result.error ?? result.stderr ?? "";
-      const isError =
-        !!errOut ||
-        (result.statusCode !== undefined && result.statusCode !== 0) ||
-        (result.exitCode !== undefined && result.exitCode !== 0);
-
-      setConsoleTranscript(isError ? errOut || output : output || "Program exited with no output.");
+      const failed = nextTestResults.some((test) => test.status === "fail" || test.status === "error");
+      setConsoleTranscript(buildRunOutput(result, nextTestResults));
       setConsoleMeta({
-        isError,
+        isError: failed,
         time: new Date().toLocaleTimeString(),
         runtime: result.executionTime ? `${result.executionTime}s` : result.time ? `${result.time}s` : "—",
       });
-
-      if (Array.isArray(result.testResults)) {
-        setTestResults(result.testResults);
-      }
     } catch (err) {
       setConsoleTranscript(err.message ?? "Compilation failed.");
       setConsoleMeta({ isError: true, time: new Date().toLocaleTimeString(), runtime: "0.000s" });
@@ -687,7 +727,7 @@ export default function LabWorkspacePage() {
         language: languageForFile(lab, activeFile),
       }));
       if (Array.isArray(submission?.testResults)) {
-        setTestResults(submission.testResults);
+        setTestResults(normalizeTestResults(submission.testResults));
       }
       setProgressStatus("submitted");
       setSubmitted(true);
@@ -696,9 +736,12 @@ export default function LabWorkspacePage() {
     }
   };
 
-  const visibleTests = testResults.filter((r) => r.status !== "hidden" && r.type !== "hidden");
+  const visibleTests = testResults.filter((r) => r.visible !== false && r.status !== "hidden" && r.type !== "hidden");
   const passed = visibleTests.filter((r) => r.status === "pass").length;
   const visibleTotal = visibleTests.length;
+  const hasVisibleFailures = visibleTests.some((r) => r.status === "fail" || r.status === "error");
+  const allVisiblePassed = visibleTotal > 0 && passed === visibleTotal && !hasVisibleFailures;
+  const resultCountColor = allVisiblePassed ? "#4ade80" : hasVisibleFailures ? "#f87171" : "#4a5568";
   const supportedExtensions = Array.from(new Set(
     labLanguages(lab).flatMap((language) =>
       RUNNABLE_EXTENSIONS_BY_LANGUAGE[normalizeLanguage(language)] ?? [],
@@ -1276,7 +1319,7 @@ export default function LabWorkspacePage() {
                 style={{
                   fontSize: 14,
                   fontWeight: 700,
-                  color: passed === visibleTotal ? "#4ade80" : "#f87171",
+                  color: resultCountColor,
                 }}
               >
                 {passed}/{visibleTotal}
@@ -1312,7 +1355,7 @@ export default function LabWorkspacePage() {
                   ) : (
                     visibleTests.map((t, index) => (
                       <div
-                        key={t.name}
+                        key={t.id || t.name || `test-${index + 1}`}
                         style={{
                           display: "flex",
                           alignItems: "center",
@@ -1331,7 +1374,7 @@ export default function LabWorkspacePage() {
                             color:
                               t.status === "pass"
                                 ? "#4ade80"
-                                : t.status === "fail"
+                                : t.status === "fail" || t.status === "error"
                                   ? "#f87171"
                                   : "#6b7a99",
                           }}
@@ -1339,7 +1382,7 @@ export default function LabWorkspacePage() {
                           {t.name}
                         </span>
                         <span style={{ fontSize: 14 }}>
-                          {t.status === "pass" ? "✓" : "✗"}
+                          {t.status === "pass" ? "✓" : t.status === "fail" || t.status === "error" ? "✗" : "•"}
                         </span>
                       </div>
                     ))
