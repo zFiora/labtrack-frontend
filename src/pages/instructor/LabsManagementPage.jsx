@@ -1,8 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import InstructorLayout from "../../components/layout/InstructorLayout";
-
-const LABS_KEY = "labtrack_instructor_labs";
+import { api } from "../../utils/api.js";
 
 const STATUS_STYLES = {
   draft: { bg: "rgba(148,163,184,0.12)", text: "#94a3b8", border: "rgba(148,163,184,0.25)" },
@@ -27,47 +26,133 @@ function formatDate(iso) {
   });
 }
 
+function getLabsPayload(data) {
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data?.labs)) return data.labs;
+  if (Array.isArray(data?.items)) return data.items;
+  return [];
+}
+
+function getLabPayload(data) {
+  return data?.lab ?? data;
+}
+
 export default function LabsManagementPage() {
   const navigate = useNavigate();
   const [labs, setLabs] = useState([]);
+  const [allLabs, setAllLabs] = useState([]);
   const [filter, setFilter] = useState("all");
   const [deleteConfirm, setDeleteConfirm] = useState(null); // lab id to confirm delete
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [actionError, setActionError] = useState("");
+
+  const fetchLabs = useCallback(async (targetFilter = filter, { showLoading = true } = {}) => {
+    if (showLoading) setLoading(true);
+    setError("");
+
+    try {
+      const listPath =
+        targetFilter === "all"
+          ? "/instructor/labs"
+          : `/instructor/labs?status=${encodeURIComponent(targetFilter)}`;
+
+      const [allData, filteredData] = await Promise.all([
+        api.get("/instructor/labs"),
+        targetFilter === "all" ? Promise.resolve(null) : api.get(listPath),
+      ]);
+
+      const all = getLabsPayload(allData);
+      setAllLabs(all);
+      setLabs(targetFilter === "all" ? all : getLabsPayload(filteredData));
+    } catch (err) {
+      if (err.status === 401) {
+        navigate("/");
+        return;
+      }
+      setError(err.message ?? "Failed to load labs. Please try again.");
+      setLabs([]);
+      setAllLabs([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [filter, navigate]);
 
   useEffect(() => {
-    const stored = JSON.parse(localStorage.getItem(LABS_KEY) || "[]");
-    setLabs(stored);
-  }, []);
+    fetchLabs();
+  }, [fetchLabs]);
 
-  const filtered = filter === "all" ? labs : labs.filter((l) => l.status === filter);
+  const filtered = labs;
 
   const counts = {
-    all: labs.length,
-    active: labs.filter((l) => l.status === "active").length,
-    draft: labs.filter((l) => l.status === "draft").length,
-    closed: labs.filter((l) => l.status === "closed").length,
+    all: allLabs.length,
+    active: allLabs.filter((l) => l.status === "active").length,
+    draft: allLabs.filter((l) => l.status === "draft").length,
+    closed: allLabs.filter((l) => l.status === "closed").length,
   };
 
-  const handleDelete = (id) => {
-    const updated = labs.filter((l) => l.id !== id);
-    localStorage.setItem(LABS_KEY, JSON.stringify(updated));
-    setLabs(updated);
-    setDeleteConfirm(null);
-  };
-
-  const handleQuickPublish = (id) => {
-    const updated = labs.map((l) =>
-      l.id === id ? { ...l, status: "active", updatedAt: new Date().toISOString() } : l,
+  const syncUpdatedLab = (updatedLab) => {
+    if (!updatedLab?.id) return;
+    setAllLabs((current) =>
+      current.map((lab) => (String(lab.id) === String(updatedLab.id) ? updatedLab : lab)),
     );
-    localStorage.setItem(LABS_KEY, JSON.stringify(updated));
-    setLabs(updated);
+    setLabs((current) => {
+      const belongsInCurrentFilter =
+        filter === "all" || updatedLab.status === filter;
+      const alreadyVisible = current.some((lab) => String(lab.id) === String(updatedLab.id));
+
+      if (!belongsInCurrentFilter) {
+        return current.filter((lab) => String(lab.id) !== String(updatedLab.id));
+      }
+      if (alreadyVisible) {
+        return current.map((lab) => (String(lab.id) === String(updatedLab.id) ? updatedLab : lab));
+      }
+      return [updatedLab, ...current];
+    });
   };
 
-  const handleClose = (id) => {
-    const updated = labs.map((l) =>
-      l.id === id ? { ...l, status: "closed", updatedAt: new Date().toISOString() } : l,
-    );
-    localStorage.setItem(LABS_KEY, JSON.stringify(updated));
-    setLabs(updated);
+  const handleDelete = async (id) => {
+    setActionError("");
+    try {
+      await api.delete(`/instructor/labs/${id}`);
+      setAllLabs((current) => current.filter((lab) => String(lab.id) !== String(id)));
+      setLabs((current) => current.filter((lab) => String(lab.id) !== String(id)));
+      setDeleteConfirm(null);
+    } catch (err) {
+      setActionError(err.message ?? "Failed to delete lab. Please try again.");
+    }
+  };
+
+  const handleQuickPublish = async (id) => {
+    setActionError("");
+    try {
+      const updatedLab = getLabPayload(
+        await api.patch(`/instructor/labs/${id}/publish`, { status: "active" }),
+      );
+      if (updatedLab?.id) {
+        syncUpdatedLab(updatedLab);
+      } else {
+        fetchLabs(filter, { showLoading: false });
+      }
+    } catch (err) {
+      setActionError(err.message ?? "Failed to publish lab. Please try again.");
+    }
+  };
+
+  const handleClose = async (id) => {
+    setActionError("");
+    try {
+      const updatedLab = getLabPayload(
+        await api.patch(`/instructor/labs/${id}`, { status: "closed" }),
+      );
+      if (updatedLab?.id) {
+        syncUpdatedLab(updatedLab);
+      } else {
+        fetchLabs(filter, { showLoading: false });
+      }
+    } catch (err) {
+      setActionError(err.message ?? "Failed to close lab. Please try again.");
+    }
   };
 
   const TABS = ["all", "active", "draft", "closed"];
@@ -200,7 +285,53 @@ export default function LabsManagementPage() {
         </div>
 
         {/* Labs list */}
-        {filtered.length === 0 ? (
+        {error && (
+          <div
+            style={{
+              marginBottom: 16,
+              padding: "12px 16px",
+              borderRadius: 10,
+              background: "rgba(239,68,68,0.10)",
+              border: "1px solid rgba(239,68,68,0.25)",
+              color: "#f87171",
+              fontSize: 13,
+            }}
+          >
+            {error}
+          </div>
+        )}
+
+        {actionError && (
+          <div
+            style={{
+              marginBottom: 16,
+              padding: "12px 16px",
+              borderRadius: 10,
+              background: "rgba(250,204,21,0.10)",
+              border: "1px solid rgba(250,204,21,0.25)",
+              color: "#facc15",
+              fontSize: 13,
+            }}
+          >
+            {actionError}
+          </div>
+        )}
+
+        {loading ? (
+          <div
+            style={{
+              textAlign: "center",
+              padding: "64px 32px",
+              background: "#0f1b33",
+              border: "1px solid #1a2540",
+              borderRadius: 16,
+              color: "#94a3b8",
+              fontSize: 14,
+            }}
+          >
+            Loading labs...
+          </div>
+        ) : filtered.length === 0 ? (
           <div
             style={{
               textAlign: "center",

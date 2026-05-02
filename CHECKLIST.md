@@ -267,7 +267,7 @@ uses it. This prevents 37 pages from each doing it manually.
 
 ### File: `src/pages/instructor/LabsManagementPage.jsx`
 
-- [ ] **4.1 — Replace localStorage with API**
+- [x] **4.1 — Replace localStorage with API**
   - Call `api.get("/instructor/labs")` on mount
   - Support filter by status with `?status=draft|active|closed`
   - Remove all `localStorage.getItem("labtrack_instructor_labs")` calls
