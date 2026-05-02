@@ -98,11 +98,13 @@ function normalizeTestCasesForApi(testCases) {
       ...id,
       name: testCase.name || `Test Case ${index + 1}`,
       description: testCase.description || testCase.name || `Test Case ${index + 1}`,
-      type: type === "hidden" ? "hidden" : "visible",
-      expectedInput: testCase.expectedInput ?? testCase.input ?? "",
+      input: testCase.input ?? testCase.expectedInput ?? "",
       expectedOutput: testCase.expectedOutput ?? "",
       points: Number.parseInt(testCase.points, 10) || 0,
+      visible: type !== "hidden",
+      timeoutSeconds: Number.parseInt(testCase.timeoutSeconds ?? testCase.timeout, 10) || 5,
       order: Number.isInteger(Number(testCase.order)) ? Number(testCase.order) : index + 1,
+      verified: Boolean(testCase.verified),
     };
   });
 }
@@ -114,7 +116,7 @@ function normalizeTestCasesForEditor(testCases) {
     input: testCase.input ?? testCase.expectedInput ?? "",
     expectedOutput: testCase.expectedOutput ?? "",
     points: testCase.points ?? "",
-    visibility: testCase.visibility || testCase.type || "visible",
+    visibility: testCase.visibility || testCase.type || (testCase.visible === false ? "hidden" : "visible"),
     timeout: testCase.timeout ?? testCase.timeoutSeconds ?? 5,
     verified: Boolean(testCase.verified),
   }));
@@ -176,8 +178,12 @@ function normalizeSolutionsForApi(solutions, labDueDate) {
       type: solution.type === "top_student" ? "top_student" : "instructor",
       title: solution.title?.trim() || `Solution ${index + 1}`,
       language: solution.language,
+      code: solution.code ?? getFirstFileContent(solution.files),
       files: buildSolutionFiles(solution),
       explanation: solution.explanation?.trim() || undefined,
+      releaseMode: solution.releaseMode || "after_graded",
+      status: solution.status || (solution.releaseMode === "immediate" ? "published" : "scheduled"),
+      publishedAt: solution.publishedAt || undefined,
       ...(unlockedAt ? { unlockedAt } : {}),
     };
   });
@@ -500,12 +506,12 @@ export default function CreateLabPage() {
     }
   };
 
-  const simulateUpload = (files, type) => {
+  const trackUploadProgress = (files, type) => {
     files.forEach((file) => {
       setUploadingFiles((prev) => ({ ...prev, [file.name + type]: 0 }));
       let progress = 0;
       const iv = setInterval(() => {
-        progress += Math.random() * 35 + 15;
+        progress += 25;
         if (progress >= 100) {
           clearInterval(iv);
           setUploadingFiles((prev) => {
@@ -537,7 +543,7 @@ export default function CreateLabPage() {
       return;
     }
 
-    simulateUpload(incoming, type);
+    trackUploadProgress(incoming, type);
 
     if (type === "starter") {
       setStarterFiles((prev) => {

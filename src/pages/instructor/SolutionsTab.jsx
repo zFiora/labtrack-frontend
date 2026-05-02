@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { api } from "../../utils/api.js";
 
 // FR-I6: Reference Solution Publishing
 
@@ -30,25 +31,46 @@ const EMPTY_SOL = {
   releaseDate: "",
 };
 
-function CompileSimulator({ code, language, onResult }) {
+function normalizeLanguage(language) {
+  const value = String(language || "python").trim().toLowerCase();
+  if (value === "c++") return "cpp";
+  if (value === "python") return "python";
+  if (value === "javascript") return "javascript";
+  return value;
+}
+
+function isCompileError(result) {
+  const statusCode = result.statusCode ?? result.exitCode;
+  return Boolean(result.isError || result.error || result.stderr)
+    || (statusCode !== undefined && !["0", "200"].includes(String(statusCode)));
+}
+
+function CompileValidator({ code, language, onResult }) {
   const [running, setRunning] = useState(false);
 
-  const run = () => {
+  const run = async () => {
     if (!code.trim()) { onResult({ ok: false, msg: "No code provided." }); return; }
     setRunning(true);
     onResult(null);
-    setTimeout(() => {
+
+    try {
+      const result = await api.post("/compile", {
+        code,
+        language: normalizeLanguage(language),
+        input: "",
+      });
+      const failed = isCompileError(result);
+      onResult({
+        ok: !failed,
+        msg: failed
+          ? (result.stderr || result.error || result.output || "Compilation failed.")
+          : "Compilation successful — no errors detected.",
+      });
+    } catch (err) {
+      onResult({ ok: false, msg: err.message || "Compilation failed." });
+    } finally {
       setRunning(false);
-      // Simulate: flag obvious syntax issues, otherwise pass
-      const hasSyntaxIssue =
-        (language === "Python" && /^\s*(def|class|if|for|while)\s+\w/.test(code) === false && code.includes("def ") === false && code.trim().length < 5)
-        || false;
-      if (hasSyntaxIssue) {
-        onResult({ ok: false, msg: "SyntaxError: unexpected EOF while parsing" });
-      } else {
-        onResult({ ok: true, msg: "Compilation successful — no errors detected." });
-      }
-    }, 1400);
+    }
   };
 
   return (
@@ -354,7 +376,7 @@ export default function SolutionsTab({ solutions, setSolutions, labLanguages, la
             <div>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 5 }}>
                 <label style={{ ...labelStyle, margin: 0 }}>Solution Code <span style={{ color: "#f87171" }}>*</span></label>
-                <CompileSimulator
+                <CompileValidator
                   code={form.code}
                   language={form.language}
                   onResult={(r) => {

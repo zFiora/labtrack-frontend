@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { api } from "../../utils/api.js";
 
 const inputStyle = {
   width: "100%",
@@ -47,6 +48,20 @@ function Spinner() {
       }}
     />
   );
+}
+
+function normalizeLanguage(language) {
+  const value = String(language || "python").trim().toLowerCase();
+  if (value === "c++") return "cpp";
+  if (value === "python") return "python";
+  if (value === "javascript") return "javascript";
+  return value;
+}
+
+function isCompileError(result) {
+  const statusCode = result.statusCode ?? result.exitCode;
+  return Boolean(result.isError || result.error || result.stderr)
+    || (statusCode !== undefined && !["0", "200"].includes(String(statusCode)));
 }
 
 export default function TestCasesTab({ testCases, setTestCases, labPoints, labLanguages, showToast }) {
@@ -184,28 +199,45 @@ export default function TestCasesTab({ testCases, setTestCases, labPoints, labLa
     setShowRunner(true);
   };
 
-  const runTest = () => {
+  const runTest = async () => {
     if (!runnerCode.trim()) {
       setRunResult({ status: "error", output: "Error: No solution code provided." });
       return;
     }
     setIsRunning(true);
     setRunResult(null);
-    // Simulate execution (1.5s)
-    setTimeout(() => {
-      const expectedTrimmed = form.expectedOutput.trim();
-      // Simulation: treat as passing (we can't actually run arbitrary code in-browser)
-      setRunResult({
-        status: "pass",
-        output: expectedTrimmed,
+
+    try {
+      const result = await api.post("/compile", {
+        code: runnerCode,
+        language: normalizeLanguage(runnerLang),
+        input: form.input.trim(),
       });
+      const expectedTrimmed = form.expectedOutput.trim();
+      const actualOutput = result.output ?? result.stdout ?? result.stderr ?? result.error ?? "";
+      const actualTrimmed = actualOutput.trim();
+      const failed = isCompileError(result);
+
+      setRunResult({
+        status: !failed && actualTrimmed === expectedTrimmed ? "pass" : "fail",
+        output: actualOutput || "Program exited with no output.",
+      });
+    } catch (err) {
+      setRunResult({
+        status: "error",
+        output: err.message ?? "Failed to run test case.",
+      });
+    } finally {
       setIsRunning(false);
-    }, 1500);
+    }
   };
 
   const confirmFromRunner = () => {
+    if (runResult?.status !== "pass") {
+      showToast("error", "Run the test successfully before confirming it");
+      return;
+    }
     setShowRunner(false);
-    setRunResult({ status: "pass", output: form.expectedOutput.trim() });
     showToast("success", "Test case verified — ready to save");
   };
 
