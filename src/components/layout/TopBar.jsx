@@ -2,11 +2,20 @@ import { useNavigate } from "react-router-dom";
 import { useState } from "react";
 import { clearCurrentUser, getCurrentUser } from "../../utils/authStorage.js";
 
+function formatRole(role) {
+  if (!role) return "";
+  return role.charAt(0).toUpperCase() + role.slice(1);
+}
+
 function TopBar({ title = ""}) {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
 
   const currentUser = getCurrentUser() || {};
+  const accountLabel = [
+    formatRole(currentUser.role),
+    currentUser.department,
+  ].filter(Boolean).join(" · ");
 
   const handleLogout = () => {
     clearCurrentUser();
@@ -28,9 +37,11 @@ function TopBar({ title = ""}) {
       </div>
 
       <div className="flex items-center gap-4 relative">
-        <div className="rounded-full bg-[#1e293b] px-5 py-2 text-sm font-semibold text-cyan-400">
-          ICS 202 - SEC 03
-        </div>
+        {accountLabel ? (
+          <div className="rounded-full bg-[#1e293b] px-5 py-2 text-sm font-semibold text-cyan-400">
+            {accountLabel}
+          </div>
+        ) : null}
 
         {/* Profile Circle */}
         <div

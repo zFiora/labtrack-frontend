@@ -64,21 +64,17 @@ export default function AdminSideBar() {
       <nav style={{ padding: "16px 14px", flex: 1 }} onMouseLeave={() => setHoveredNav(null)}>
         {NAV_ITEMS.map((item) => {
           const isActive =
-            !item.disabled &&
             (location.pathname === item.path ||
               location.pathname.startsWith(`${item.path}/`));
           const isHighlighted = isActive || hoveredNav === item.label;
-          let labelColor = muted;
-          if (item.disabled) labelColor = dimmed;
-          else if (isHighlighted) labelColor = "#e2e8f0";
+          const labelColor = isHighlighted ? "#e2e8f0" : muted;
 
           return (
             <button
               key={item.label}
-              onClick={() => !item.disabled && navigate(item.path)}
-              onMouseEnter={() => !item.disabled && setHoveredNav(item.label)}
+              onClick={() => navigate(item.path)}
+              onMouseEnter={() => setHoveredNav(item.label)}
               onMouseLeave={() => setHoveredNav(null)}
-              title={item.disabled ? "Coming soon" : undefined}
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -92,10 +88,9 @@ export default function AdminSideBar() {
                 color: labelColor,
                 fontSize: 14,
                 fontWeight: 600,
-                cursor: item.disabled ? "not-allowed" : "pointer",
+                cursor: "pointer",
                 textAlign: "left",
                 transition: "all 0.2s ease",
-                opacity: item.disabled ? 0.45 : 1,
               }}
             >
               <span
@@ -114,11 +109,6 @@ export default function AdminSideBar() {
                 {item.icon}
               </span>
               <span style={{ flex: 1 }}>{item.label}</span>
-              {item.disabled && (
-                <span style={{ fontSize: 9, color: dimmed, letterSpacing: "0.05em" }}>
-                  SOON
-                </span>
-              )}
             </button>
           );
         })}

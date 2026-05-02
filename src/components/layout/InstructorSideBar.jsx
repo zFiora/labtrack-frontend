@@ -19,9 +19,7 @@ export default function InstructorSideBar() {
       path: "/instructor/courses",
       matchPaths: ["/instructor/courses"],
     },
-    { label: "Students", icon: "👥", path: "/instructor/students", disabled: true },
     { label: "Analytics", icon: "📊", path: "/instructor/analytics" },
-    { label: "Settings", icon: "⚙️", path: "/instructor/settings", disabled: true },
   ];
 
   const border = "#1a2540";
@@ -75,21 +73,20 @@ export default function InstructorSideBar() {
       >
         {navItems.map((item) => {
           const matchedPaths = item.matchPaths ?? [item.path];
-          const isActive = !item.disabled && matchedPaths.some(
+          const isActive = matchedPaths.some(
             (path) =>
               location.pathname === path ||
               location.pathname.startsWith(`${path}/`),
           );
           const isHighlighted = isActive || hoveredNav === item.label;
-          const labelColor = item.disabled ? dimmed : isHighlighted ? "#e2e8f0" : muted;
+          const labelColor = isHighlighted ? "#e2e8f0" : muted;
 
           return (
             <button
               key={item.label}
-              onClick={() => !item.disabled && navigate(item.path)}
-              onMouseEnter={() => !item.disabled && setHoveredNav(item.label)}
+              onClick={() => navigate(item.path)}
+              onMouseEnter={() => setHoveredNav(item.label)}
               onMouseLeave={() => setHoveredNav(null)}
-              title={item.disabled ? "Coming soon" : undefined}
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -103,10 +100,9 @@ export default function InstructorSideBar() {
                 color: labelColor,
                 fontSize: 14,
                 fontWeight: 600,
-                cursor: item.disabled ? "not-allowed" : "pointer",
+                cursor: "pointer",
                 textAlign: "left",
                 transition: "all 0.2s ease",
-                opacity: item.disabled ? 0.5 : 1,
               }}
             >
               <span
@@ -127,11 +123,6 @@ export default function InstructorSideBar() {
                 {item.icon}
               </span>
               <span style={{ flex: 1 }}>{item.label}</span>
-              {item.disabled && (
-                <span style={{ fontSize: 9, color: dimmed, letterSpacing: "0.05em" }}>
-                  SOON
-                </span>
-              )}
             </button>
           );
         })}
