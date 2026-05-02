@@ -215,9 +215,15 @@ function buildRunOutput(result, results) {
   results
     .filter((test) => test.visible !== false)
     .forEach((test) => {
-      const icon = test.status === "pass" ? "PASS" : test.status === "fail" ? "FAIL" : "PENDING";
+      const icon = test.status === "pass"
+        ? "PASS"
+        : test.status === "fail"
+          ? "FAIL"
+          : test.status === "error"
+            ? "ERROR"
+            : "PENDING";
       lines.push(`${icon} ${test.name}`);
-      if (test.status === "fail" && (test.expectedOutput !== undefined || test.actualOutput !== undefined)) {
+      if ((test.status === "fail" || test.status === "error") && (test.expectedOutput !== undefined || test.actualOutput !== undefined)) {
         lines.push(`  Expected: ${test.expectedOutput ?? ""}`);
         lines.push(`  Actual: ${test.actualOutput ?? ""}`);
       }
