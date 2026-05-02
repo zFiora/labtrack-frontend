@@ -27,6 +27,33 @@ function fmtDate(iso) {
   }
 }
 
+function labInfo(gradeRow) {
+  return gradeRow?.lab && typeof gradeRow.lab === "object" ? gradeRow.lab : {};
+}
+
+function labTitle(gradeRow) {
+  if (typeof gradeRow?.lab === "string") return gradeRow.lab;
+  return labInfo(gradeRow).title ?? gradeRow?.labTitle ?? "—";
+}
+
+function normalizeRubric(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  return {
+    comments: value.comments ?? null,
+    style: value.style ?? null,
+    efficiency: value.efficiency ?? null,
+  };
+}
+
+function normalizeInlineComments(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return value;
+}
+
+function hasText(value) {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
 export default function GradesPage() {
   const navigate = useNavigate();
   const [rows, setRows]                     = useState([]);
@@ -46,20 +73,33 @@ export default function GradesPage() {
     ])
       .then(([grades, enrolledCourses]) => {
         // grades: [{ id, lab: { title, courseCode, points, ... }, score, testsPassed,
-        //            testsTotal, grade, feedback, status, submittedAt }]
-        const built = grades.map((g) => ({
-          id:          g.id,
-          lab:         g.lab?.title ?? "—",
-          courseCode:  g.lab?.courseCode ?? null,
-          score:       g.score ?? null,
-          maxScore:    g.lab?.points ?? 100,
-          testsPassed: g.testsPassed ?? "—",
-          testsTotal:  g.testsTotal  ?? "—",
-          grade:       g.grade ?? scoreToGrade(g.score),
-          feedback:    g.feedback ?? g.overallFeedback ?? "—",
-          status:      capitalize(g.status ?? "not_started"),
-          submittedAt: fmtDate(g.submittedAt),
-        }));
+        //            testsTotal, rubric, feedback, status, submittedAt }]
+        const built = grades.map((g) => {
+          const lab = labInfo(g);
+          const feedback = g.feedback ?? g.overallFeedback ?? "";
+          const instructorNote = g.instructorNote ?? "";
+          const inlineComments = normalizeInlineComments(g.inlineComments);
+          const rubric = normalizeRubric(g.rubric ?? g.grade);
+
+          return {
+            id:          g.id,
+            lab:         labTitle(g),
+            courseCode:  g.courseCode ?? lab.courseCode ?? null,
+            score:       g.score ?? null,
+            maxScore:    g.maxScore ?? lab.points ?? 100,
+            testsPassed: g.testsPassed ?? "—",
+            testsTotal:  g.testsTotal  ?? "—",
+            grade:       typeof g.grade === "string" ? g.grade : scoreToGrade(g.score),
+            rubric,
+            feedback,
+            instructorNote,
+            inlineComments,
+            hasFeedback: hasText(feedback) || hasText(instructorNote) || Object.keys(inlineComments).length > 0 || Boolean(rubric),
+            status:      capitalize(g.status ?? "not_started"),
+            submittedAt: fmtDate(g.submittedAt),
+            gradedAt:    fmtDate(g.gradedAt),
+          };
+        });
         setRows(built);
         setCourses(enrolledCourses);
       })
@@ -249,7 +289,7 @@ export default function GradesPage() {
                             onClick={() => setDetailItem(item)}
                             className="text-cyan-400 hover:text-cyan-300 underline text-sm"
                           >
-                            View Feedback
+                            {item.hasFeedback ? "View Feedback" : "View Grade"}
                           </button>
                         ) : (
                           <span className="text-gray-600">—</span>
@@ -305,9 +345,55 @@ export default function GradesPage() {
                 <p className="text-white font-semibold">{detailItem.testsPassed}/{detailItem.testsTotal}</p>
               </div>
               <div className="bg-[#0f172a] rounded-xl p-4">
-                <p className="text-slate-500 mb-2">Instructor Comment</p>
-                <p className="text-white leading-relaxed">"{detailItem.feedback}"</p>
+                <p className="text-slate-500 mb-2">Overall Feedback</p>
+                <p className="text-white leading-relaxed">
+                  {hasText(detailItem.feedback) ? detailItem.feedback : "No overall feedback recorded."}
+                </p>
               </div>
+              {hasText(detailItem.instructorNote) && (
+                <div className="bg-[#0f172a] rounded-xl p-4">
+                  <p className="text-slate-500 mb-2">Instructor Note</p>
+                  <p className="text-white leading-relaxed">{detailItem.instructorNote}</p>
+                </div>
+              )}
+              {detailItem.rubric && (
+                <div className="bg-[#0f172a] rounded-xl p-4">
+                  <p className="text-slate-500 mb-3">Rubric</p>
+                  <div className="grid grid-cols-3 gap-3">
+                    {[
+                      ["Comments", detailItem.rubric.comments],
+                      ["Style", detailItem.rubric.style],
+                      ["Efficiency", detailItem.rubric.efficiency],
+                    ].map(([label, value]) => (
+                      <div key={label} className="rounded-lg border border-slate-700/70 bg-[#0b1424] p-3">
+                        <p className="text-slate-500 text-xs mb-1">{label}</p>
+                        <p className="text-cyan-300 font-bold">{value ?? "—"}/5</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {Object.keys(detailItem.inlineComments || {}).length > 0 && (
+                <div className="bg-[#0f172a] rounded-xl p-4">
+                  <p className="text-slate-500 mb-3">Inline Comments</p>
+                  <div className="space-y-2">
+                    {Object.entries(detailItem.inlineComments)
+                      .sort(([a], [b]) => Number(a) - Number(b))
+                      .map(([line, comment]) => (
+                        <div key={line} className="rounded-lg border border-yellow-500/20 bg-yellow-500/5 p-3">
+                          <p className="text-yellow-300 text-xs font-bold mb-1">Line {line}</p>
+                          <p className="text-white leading-relaxed">{comment}</p>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              )}
+              {detailItem.gradedAt !== "—" && (
+                <div className="bg-[#0f172a] rounded-xl p-4">
+                  <p className="text-slate-500 mb-1">Graded</p>
+                  <p className="text-white">{detailItem.gradedAt}</p>
+                </div>
+              )}
               <div className="bg-[#0f172a] rounded-xl p-4">
                 <p className="text-slate-500 mb-1">Submitted</p>
                 <p className="text-white">{detailItem.submittedAt}</p>
