@@ -38,20 +38,22 @@ function levelBg(level) {
   return "rgba(96,165,250,0.1)";
 }
 
-// ─── Simulated live metrics (randomized on each tick) ─────────────────────────
-function genMetrics() {
-  return {
-    cpu:         Math.floor(18 + Math.random() * 45),
-    memory:      Math.floor(42 + Math.random() * 30),
-    disk:        78,
-    activeJobs:  Math.floor(Math.random() * 12),
-    queuedJobs:  Math.floor(Math.random() * 6),
-    uptime:      "14d 6h 32m",
-    activeSessions: Math.floor(8 + Math.random() * 20),
-    requestsMin: Math.floor(40 + Math.random() * 80),
-    avgLatencyMs: Math.floor(120 + Math.random() * 160),
-    errorRate:   (Math.random() * 0.8).toFixed(2),
-  };
+const EMPTY_METRICS = {
+  cpu: 0,
+  memory: 0,
+  disk: null,
+  activeJobs: 0,
+  queuedJobs: 0,
+  uptime: "0d 0h 0m",
+  activeSessions: 0,
+  requestsMin: 0,
+  avgLatencyMs: 0,
+  errorRate: 0,
+  unresolvedLogs: 0,
+};
+
+function normalizeMetrics(metrics) {
+  return { ...EMPTY_METRICS, ...(metrics || {}) };
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -71,6 +73,18 @@ function SectionCard({ title, icon, children, action }) {
 }
 
 function MetricBar({ label, value, max = 100, unit = "%", warnAt = 70, dangerAt = 90 }) {
+  if (value === null || value === undefined) {
+    return (
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+          <span style={{ fontSize: 12, color: muted }}>{label}</span>
+          <span style={{ fontSize: 13, fontWeight: 700, color: dimmed }}>N/A</span>
+        </div>
+        <div style={{ height: 6, borderRadius: 3, background: "#0f1b33" }} />
+      </div>
+    );
+  }
+
   const pct = Math.min(100, (value / max) * 100);
   const color = pct >= dangerAt ? danger : pct >= warnAt ? warn : success;
   return (
@@ -146,7 +160,7 @@ function Toast({ msg, type }) {
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function SystemMonitorPage() {
   const navigate = useNavigate();
-  const [metrics, setMetrics]           = useState(genMetrics);
+  const [metrics, setMetrics]           = useState(EMPTY_METRICS);
   const [logs, setLogs]                 = useState([]);
   const [maintenance, setMaintenance]   = useState(null);
   const [loading, setLoading]           = useState(true);
@@ -158,10 +172,15 @@ export default function SystemMonitorPage() {
   const [confirmEnd, setConfirmEnd]     = useState(false);
 
   useEffect(() => {
-    Promise.all([api.get("/admin/system/logs"), api.get("/admin/system/maintenance")])
-      .then(([logsData, maintData]) => {
+    Promise.all([
+      api.get("/admin/system/logs"),
+      api.get("/admin/system/maintenance"),
+      api.get("/admin/system/metrics"),
+    ])
+      .then(([logsData, maintData, metricsData]) => {
         setLogs(logsData);
         setMaintenance(maintData);
+        setMetrics(normalizeMetrics(metricsData));
       })
       .catch((err) => {
         if (err.status === 401) { navigate("/"); return; }
@@ -172,9 +191,15 @@ export default function SystemMonitorPage() {
 
   // Live metrics refresh every 4 s
   useEffect(() => {
-    const id = setInterval(() => setMetrics(genMetrics()), 4000);
+    const id = setInterval(() => {
+      api.get("/admin/system/metrics")
+        .then((metricsData) => setMetrics(normalizeMetrics(metricsData)))
+        .catch((err) => {
+          if (err.status === 401) navigate("/");
+        });
+    }, 4000);
     return () => clearInterval(id);
-  }, []);
+  }, [navigate]);
 
   useEffect(() => {
     if (toast.msg) {
@@ -269,7 +294,7 @@ export default function SystemMonitorPage() {
     return true;
   });
 
-  const unresolvedCount = logs.filter((l) => !l.resolved).length;
+  const unresolvedCount = metrics.unresolvedLogs ?? logs.filter((l) => !l.resolved).length;
 
   if (loading) {
     return (

@@ -286,8 +286,7 @@ export default function UserManagementPage() {
 
   // ── Delete user ──
   const openDeleteConfirm = (user) => {
-    const count = user.role === "student" ? Math.floor(Math.random() * 25) : 0;
-    setDeleteSubmissionCount(count);
+    setDeleteSubmissionCount(user.submissionCount || 0);
     setDeleteTarget(user);
   };
 
