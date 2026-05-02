@@ -1,12 +1,7 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import AdminLayout from "../../components/layout/AdminLayout";
-
-// ─── Storage keys ─────────────────────────────────────────────────────────────
-const USERS_KEY    = "users";
-const COURSES_KEY  = "labtrack_courses";
-const DEPTS_KEY    = "labtrack_departments";
-const LABS_KEY     = "labtrack_instructor_labs";
-const REPORTS_KEY  = "labtrack_saved_reports";
+import { api } from "../../utils/api.js";
 
 // ─── Style tokens ─────────────────────────────────────────────────────────────
 const bg       = "#080f1e";
@@ -22,63 +17,6 @@ const purple   = "#a78bfa";
 const orange   = "#fb923c";
 
 const DEPT_COLORS = { COE: "#f97316", ICS: "#22d3ee", SWE: "#a78bfa", MATH: "#34d399", PHYS: "#fb7185", CHEM: "#fbbf24" };
-
-// ─── Data helpers ─────────────────────────────────────────────────────────────
-function getStored(key, fallback = []) {
-  try { const r = localStorage.getItem(key); return r ? JSON.parse(r) : fallback; } catch (_) { return fallback; }
-}
-
-function computeStats() {
-  const users   = getStored(USERS_KEY, []);
-  const courses = getStored(COURSES_KEY, []);
-  const depts   = getStored(DEPTS_KEY, []);
-  const labs    = getStored(LABS_KEY, []);
-
-  const students    = users.filter((u) => u.role === "student");
-  const instructors = users.filter((u) => u.role === "instructor");
-  const admins      = users.filter((u) => u.role === "admin");
-  const active      = users.filter((u) => u.status === "active");
-
-  const totalSections     = courses.reduce((s, c) => s + (c.sections?.length ?? 0), 0);
-  const totalEnrolled     = courses.reduce((s, c) =>
-    s + (c.sections?.reduce((ss, sec) => ss + (sec.enrolledStudentIds?.length ?? 0), 0) ?? 0), 0);
-  const totalSubmissions  = labs.reduce((s, l) => s + (l.submissionCount ?? Math.floor(Math.random() * 40 + 5)), 0);
-  const avgGrade          = 73 + Math.floor(Math.random() * 10); // simulated
-
-  // Submissions by dept (simulated distribution)
-  const deptSubs = depts.slice(0, 6).map((d, i) => ({
-    code: d.code,
-    name: d.name,
-    subs: Math.floor(30 + i * 17 + Math.random() * 25),
-    avgGrade: Math.floor(68 + Math.random() * 20),
-    color: DEPT_COLORS[d.code] ?? accent,
-  }));
-
-  // Activity by week (last 8 weeks simulated)
-  const weekly = Array.from({ length: 8 }, (_, i) => ({
-    week: `W${i + 1}`,
-    submissions: Math.floor(20 + Math.random() * 80),
-    activeUsers: Math.floor(15 + Math.random() * 50),
-  }));
-
-  // Language usage
-  const langs = [
-    { lang: "Python",     pct: 42, color: "#3b82f6" },
-    { lang: "C++",        pct: 28, color: "#f97316" },
-    { lang: "Java",       pct: 18, color: "#f59e0b" },
-    { lang: "JavaScript", pct: 12, color: "#eab308" },
-  ];
-
-  return {
-    users: { total: users.length, students: students.length, instructors: instructors.length, admins: admins.length, active: active.length },
-    courses: { total: courses.length, sections: totalSections, enrolled: totalEnrolled },
-    labs: { total: labs.length, submissions: totalSubmissions || (labs.length * 22), avgGrade },
-    deptSubs,
-    weekly,
-    langs,
-    depts: depts.length,
-  };
-}
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 function StatCard({ label, value, sub, color = accent, icon }) {
@@ -181,18 +119,11 @@ const REPORT_TYPES = [
 const PERIOD_OPTIONS = ["Last 7 days", "Last 30 days", "Last 90 days", "This semester", "All time"];
 const FORMAT_OPTIONS = ["PDF", "CSV", "JSON"];
 
-function ReportModal({ onClose, onGenerate }) {
+function ReportModal({ onClose, onGenerate, availableDepts }) {
   const [selected, setSelected]   = useState(null);
   const [period, setPeriod]       = useState("Last 30 days");
   const [format, setFormat]       = useState("PDF");
-  const [depts, setDepts]         = useState([]);
-  const [includeDepts, setIncludeDepts] = useState([]);
-
-  useEffect(() => {
-    const d = getStored(DEPTS_KEY, []);
-    setDepts(d);
-    setIncludeDepts(d.map((x) => x.code));
-  }, []);
+  const [includeDepts, setIncludeDepts] = useState(availableDepts.map((d) => d.code));
 
   function toggleDept(code) {
     setIncludeDepts((prev) =>
@@ -256,7 +187,7 @@ function ReportModal({ onClose, onGenerate }) {
             <div style={{ marginTop: 16 }}>
               <div style={{ fontSize: 12, color: muted, marginBottom: 8 }}>Filter Departments</div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                {depts.map((d) => (
+                {availableDepts.map((d) => (
                   <button key={d.code} type="button" onClick={() => toggleDept(d.code)} style={{
                     background: includeDepts.includes(d.code) ? (DEPT_COLORS[d.code] ?? accent) + "22" : "transparent",
                     border: `1px solid ${includeDepts.includes(d.code) ? (DEPT_COLORS[d.code] ?? accent) : border}`,
@@ -289,49 +220,98 @@ function ReportModal({ onClose, onGenerate }) {
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function AnalyticsDashboardPage() {
-  const [stats, setStats]           = useState(() => computeStats());
-  const [reports, setReports]       = useState(() => getStored(REPORTS_KEY, []));
-  const [showModal, setShowModal]   = useState(false);
-  const [toast, setToast]           = useState({ msg: "", type: "success" });
-  const [activeTab, setActiveTab]   = useState("overview"); // overview | reports
+  const navigate = useNavigate();
 
-  useEffect(() => {
-    if (toast.msg) {
-      const t = setTimeout(() => setToast({ msg: "", type: "success" }), 3000);
-      return () => clearTimeout(t);
-    }
-  }, [toast]);
+  const [statsData, setStatsData]     = useState(null);
+  const [reports, setReports]         = useState([]);
+  const [loading, setLoading]         = useState(true);
+  const [error, setError]             = useState("");
+  const [showModal, setShowModal]     = useState(false);
+  const [toast, setToast]             = useState({ msg: "", type: "success" });
+  const [activeTab, setActiveTab]     = useState("overview");
 
-  function handleGenerate({ type, period, format, depts }) {
+  const showToast = (msg, type = "success") => {
+    setToast({ msg, type });
+    setTimeout(() => setToast({ msg: "", type: "success" }), 3000);
+  };
+
+  const loadData = () => {
+    setLoading(true);
+    Promise.all([
+      api.get("/admin/analytics"),
+      api.get("/admin/analytics/reports"),
+    ])
+      .then(([analytics, savedReports]) => {
+        setStatsData(analytics);
+        setReports(Array.isArray(savedReports) ? savedReports : []);
+      })
+      .catch((err) => { if (err.status === 401) navigate("/"); else setError(err.message); })
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => { loadData(); }, [navigate]);
+
+  async function handleGenerate({ type, period, format, depts }) {
     const typeMeta = REPORT_TYPES.find((r) => r.id === type);
-    const entry = {
-      id: `rep_${Date.now()}`,
-      label: typeMeta?.label ?? type,
-      period,
-      format,
-      depts,
-      generatedAt: new Date().toISOString(),
-      size: `${(0.4 + Math.random() * 2.6).toFixed(1)} MB`,
-      status: "ready",
-    };
-    const next = [entry, ...reports];
-    setReports(next);
-    localStorage.setItem(REPORTS_KEY, JSON.stringify(next));
-    setShowModal(false);
-    setActiveTab("reports");
-    setToast({ msg: `✓ ${typeMeta?.label} generated (${format})`, type: "success" });
+    try {
+      const entry = await api.post("/admin/analytics/reports", {
+        name: typeMeta?.label ?? type,
+        type,
+        filters: { period, format, depts },
+      });
+      setReports((prev) => [entry, ...prev]);
+      setShowModal(false);
+      setActiveTab("reports");
+      showToast(`✓ ${typeMeta?.label} generated (${format})`, "success");
+    } catch (err) {
+      showToast(err.message, "error");
+      setShowModal(false);
+    }
   }
 
-  function deleteReport(id) {
-    const next = reports.filter((r) => r.id !== id);
-    setReports(next);
-    localStorage.setItem(REPORTS_KEY, JSON.stringify(next));
-    setToast({ msg: "Report deleted", type: "success" });
+  async function deleteReport(id) {
+    try {
+      await api.delete(`/admin/analytics/reports/${id}`);
+      setReports((prev) => prev.filter((r) => r.id !== id));
+      showToast("Report deleted", "success");
+    } catch (err) {
+      showToast(err.message, "error");
+    }
   }
 
-  const { users, courses, labs, deptSubs, weekly, langs } = stats;
+  if (loading) {
+    return (
+      <AdminLayout>
+        <div style={{ background: bg, minHeight: "100vh", padding: "32px 36px", color: muted, fontSize: 14 }}>
+          Loading...
+        </div>
+      </AdminLayout>
+    );
+  }
 
-  const weeklyMax = Math.max(...weekly.map((w) => w.submissions));
+  if (error) {
+    return (
+      <AdminLayout>
+        <div style={{ background: bg, minHeight: "100vh", padding: "32px 36px" }}>
+          <div style={{ padding: "12px 16px", background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 10, color: danger, fontSize: 13 }}>
+            {error}
+          </div>
+        </div>
+      </AdminLayout>
+    );
+  }
+
+  const stats = statsData?.stats ?? {};
+  const deptSubs = statsData?.deptSubs ?? [];
+  const weekly = statsData?.weekly ?? [];
+  const langs = statsData?.langs ?? [];
+  const availableDepts = deptSubs.map((d) => ({ code: d.code, name: d.name }));
+
+  const users    = stats.users    ?? { total: 0, active: 0, students: 0, instructors: 0, admins: 0 };
+  const courses  = stats.courses  ?? { total: 0, sections: 0, enrolled: 0 };
+  const labs     = stats.labs     ?? { total: 0, submissions: 0, avgGrade: 0 };
+
+  const weeklyMax = weekly.length > 0 ? Math.max(...weekly.map((w) => w.submissions)) : 1;
 
   return (
     <AdminLayout>
@@ -344,7 +324,7 @@ export default function AnalyticsDashboardPage() {
             <p style={{ margin: "6px 0 0", fontSize: 13, color: muted }}>Platform-wide usage statistics and exportable reports</p>
           </div>
           <div style={{ display: "flex", gap: 10 }}>
-            <button type="button" onClick={() => setStats(computeStats())} style={{
+            <button type="button" onClick={loadData} style={{
               background: "transparent", border: `1px solid ${border}`,
               borderRadius: 10, color: muted, fontSize: 13, fontWeight: 600,
               padding: "9px 18px", cursor: "pointer",
@@ -374,46 +354,52 @@ export default function AnalyticsDashboardPage() {
           <>
             {/* KPI row */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 24 }}>
-              <StatCard label="Total Users"     value={users.total}        sub={`${users.active} active`}     color={accent}  icon="👥" />
-              <StatCard label="Total Courses"   value={courses.total}      sub={`${courses.sections} sections`} color={purple} icon="📚" />
-              <StatCard label="Labs Published"  value={labs.total}         sub="across all courses"            color={success} icon="🧪" />
-              <StatCard label="Total Submissions" value={labs.submissions} sub={`avg grade ${labs.avgGrade}%`} color={warn}   icon="📝" />
+              <StatCard label="Total Users"       value={users.total}        sub={`${users.active} active`}      color={accent}  icon="👥" />
+              <StatCard label="Total Courses"     value={courses.total}      sub={`${courses.sections} sections`} color={purple}  icon="📚" />
+              <StatCard label="Labs Published"    value={labs.total}         sub="across all courses"             color={success} icon="🧪" />
+              <StatCard label="Total Submissions" value={labs.submissions}   sub={`avg grade ${labs.avgGrade}%`}  color={warn}    icon="📝" />
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
               {/* Weekly submissions chart */}
               <SectionCard title="Weekly Submissions (Last 8 Weeks)" icon="📈">
-                <BarChart
-                  data={weekly.map((w) => ({ ...w, color: accent }))}
-                  valueKey="submissions"
-                  labelKey="week"
-                  colorKey="color"
-                  max={weeklyMax}
-                />
-                <div style={{ display: "flex", justifyContent: "space-between", marginTop: 16, paddingTop: 14, borderTop: `1px solid ${border}` }}>
-                  <div>
-                    <div style={{ fontSize: 11, color: muted }}>Total this period</div>
-                    <div style={{ fontSize: 18, fontWeight: 700, color: accent }}>{weekly.reduce((s, w) => s + w.submissions, 0)}</div>
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 11, color: muted }}>Weekly avg</div>
-                    <div style={{ fontSize: 18, fontWeight: 700, color: "#e2e8f0" }}>
-                      {Math.round(weekly.reduce((s, w) => s + w.submissions, 0) / weekly.length)}
+                {weekly.length > 0 ? (
+                  <>
+                    <BarChart
+                      data={weekly.map((w) => ({ ...w, color: accent }))}
+                      valueKey="submissions"
+                      labelKey="week"
+                      colorKey="color"
+                      max={weeklyMax}
+                    />
+                    <div style={{ display: "flex", justifyContent: "space-between", marginTop: 16, paddingTop: 14, borderTop: `1px solid ${border}` }}>
+                      <div>
+                        <div style={{ fontSize: 11, color: muted }}>Total this period</div>
+                        <div style={{ fontSize: 18, fontWeight: 700, color: accent }}>{weekly.reduce((s, w) => s + w.submissions, 0)}</div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 11, color: muted }}>Weekly avg</div>
+                        <div style={{ fontSize: 18, fontWeight: 700, color: "#e2e8f0" }}>
+                          {Math.round(weekly.reduce((s, w) => s + w.submissions, 0) / weekly.length)}
+                        </div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 11, color: muted }}>Peak week</div>
+                        <div style={{ fontSize: 18, fontWeight: 700, color: warn }}>{weeklyMax}</div>
+                      </div>
                     </div>
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 11, color: muted }}>Peak week</div>
-                    <div style={{ fontSize: 18, fontWeight: 700, color: warn }}>{weeklyMax}</div>
-                  </div>
-                </div>
+                  </>
+                ) : (
+                  <div style={{ color: muted, fontSize: 13, textAlign: "center", padding: "20px 0" }}>No weekly data yet</div>
+                )}
               </SectionCard>
 
               {/* User breakdown */}
               <SectionCard title="User Breakdown" icon="👤">
                 <div style={{ marginBottom: 20 }}>
-                  <HorizBar label="Students"    value={users.students}    max={users.total} color="#60a5fa" unit="" />
-                  <HorizBar label="Instructors" value={users.instructors} max={users.total} color={purple}  unit="" />
-                  <HorizBar label="Admins"      value={users.admins}      max={users.total} color={warn}    unit="" />
+                  <HorizBar label="Students"    value={users.students}    max={users.total || 1} color="#60a5fa" unit="" />
+                  <HorizBar label="Instructors" value={users.instructors} max={users.total || 1} color={purple}  unit="" />
+                  <HorizBar label="Admins"      value={users.admins}      max={users.total || 1} color={warn}    unit="" />
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                   <div style={{ background: "#0a1628", border: `1px solid ${border}`, borderRadius: 10, padding: "12px 16px" }}>
@@ -440,7 +426,7 @@ export default function AnalyticsDashboardPage() {
                 ) : (
                   <>
                     <BarChart
-                      data={deptSubs.map((d) => ({ label: d.code, submissions: d.subs, color: d.color }))}
+                      data={deptSubs.map((d) => ({ label: d.code, submissions: d.subs, color: d.color ?? DEPT_COLORS[d.code] ?? accent }))}
                       valueKey="submissions"
                       labelKey="label"
                       colorKey="color"
@@ -449,7 +435,7 @@ export default function AnalyticsDashboardPage() {
                       {deptSubs.map((d) => (
                         <div key={d.code} style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                            <span style={{ width: 10, height: 10, borderRadius: 2, background: d.color, display: "inline-block" }} />
+                            <span style={{ width: 10, height: 10, borderRadius: 2, background: d.color ?? DEPT_COLORS[d.code] ?? accent, display: "inline-block" }} />
                             <span style={{ fontSize: 12, color: "#cbd5e1" }}>{d.name}</span>
                           </div>
                           <div style={{ display: "flex", gap: 16 }}>
@@ -467,27 +453,33 @@ export default function AnalyticsDashboardPage() {
 
               {/* Language usage */}
               <SectionCard title="Language Usage" icon="💻">
-                <div style={{ marginBottom: 8 }}>
-                  {langs.map((l) => (
-                    <HorizBar key={l.lang} label={l.lang} value={l.pct} max={100} color={l.color} unit="%" />
-                  ))}
-                </div>
-                <div style={{ padding: "14px 0 0", borderTop: `1px solid ${border}` }}>
-                  <div style={{ fontSize: 12, color: muted, marginBottom: 10 }}>Active Sessions by Language</div>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    {langs.map((l) => (
-                      <div key={l.lang} style={{
-                        background: l.color + "15", border: `1px solid ${l.color}44`,
-                        borderRadius: 8, padding: "6px 12px",
-                        display: "flex", alignItems: "center", gap: 6,
-                      }}>
-                        <span style={{ width: 8, height: 8, borderRadius: "50%", background: l.color, display: "inline-block" }} />
-                        <span style={{ fontSize: 12, color: "#e2e8f0" }}>{l.lang}</span>
-                        <span style={{ fontSize: 12, fontWeight: 700, color: l.color }}>{l.pct}%</span>
+                {langs.length === 0 ? (
+                  <div style={{ color: muted, fontSize: 13, textAlign: "center", padding: "20px 0" }}>No language data yet</div>
+                ) : (
+                  <>
+                    <div style={{ marginBottom: 8 }}>
+                      {langs.map((l) => (
+                        <HorizBar key={l.lang} label={l.lang} value={l.pct} max={100} color={l.color} unit="%" />
+                      ))}
+                    </div>
+                    <div style={{ padding: "14px 0 0", borderTop: `1px solid ${border}` }}>
+                      <div style={{ fontSize: 12, color: muted, marginBottom: 10 }}>Active Sessions by Language</div>
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        {langs.map((l) => (
+                          <div key={l.lang} style={{
+                            background: l.color + "15", border: `1px solid ${l.color}44`,
+                            borderRadius: 8, padding: "6px 12px",
+                            display: "flex", alignItems: "center", gap: 6,
+                          }}>
+                            <span style={{ width: 8, height: 8, borderRadius: "50%", background: l.color, display: "inline-block" }} />
+                            <span style={{ fontSize: 12, color: "#e2e8f0" }}>{l.lang}</span>
+                            <span style={{ fontSize: 12, fontWeight: 700, color: l.color }}>{l.pct}%</span>
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
-                </div>
+                    </div>
+                  </>
+                )}
               </SectionCard>
             </div>
           </>
@@ -520,26 +512,27 @@ export default function AnalyticsDashboardPage() {
                   {reports.map((r) => {
                     const d = new Date(r.generatedAt);
                     const dateStr = `${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+                    const filters = r.filters ?? {};
                     return (
                       <tr key={r.id} style={{ borderTop: `1px solid ${border}` }}>
-                        <td style={{ padding: "12px 0", fontSize: 13, fontWeight: 600, color: "#e2e8f0" }}>{r.label}</td>
-                        <td style={{ padding: "12px 12px 12px 0", fontSize: 12, color: muted }}>{r.period}</td>
+                        <td style={{ padding: "12px 0", fontSize: 13, fontWeight: 600, color: "#e2e8f0" }}>{r.name}</td>
+                        <td style={{ padding: "12px 12px 12px 0", fontSize: 12, color: muted }}>{filters.period ?? "—"}</td>
                         <td style={{ padding: "12px 12px 12px 0" }}>
                           <span style={{
-                            background: r.format === "PDF" ? "rgba(251,191,36,0.1)" : r.format === "CSV" ? "rgba(52,211,153,0.1)" : "rgba(96,165,250,0.1)",
-                            color: r.format === "PDF" ? warn : r.format === "CSV" ? success : "#60a5fa",
-                            border: `1px solid currentColor`,
+                            background: filters.format === "PDF" ? "rgba(251,191,36,0.1)" : filters.format === "CSV" ? "rgba(52,211,153,0.1)" : "rgba(96,165,250,0.1)",
+                            color: filters.format === "PDF" ? warn : filters.format === "CSV" ? success : "#60a5fa",
+                            border: "1px solid currentColor",
                             borderRadius: 6, fontSize: 10, fontWeight: 700, padding: "2px 8px",
-                          }}>{r.format}</span>
+                          }}>{filters.format ?? "—"}</span>
                         </td>
                         <td style={{ padding: "12px 12px 12px 0", fontSize: 11, color: muted }}>
-                          {r.depts?.length > 0 ? r.depts.join(", ") : "All"}
+                          {filters.depts?.length > 0 ? filters.depts.join(", ") : "All"}
                         </td>
-                        <td style={{ padding: "12px 12px 12px 0", fontSize: 12, color: dimmed }}>{r.size}</td>
+                        <td style={{ padding: "12px 12px 12px 0", fontSize: 12, color: dimmed }}>{r.size ?? "—"}</td>
                         <td style={{ padding: "12px 12px 12px 0", fontSize: 11, color: dimmed }}>{dateStr}</td>
                         <td style={{ padding: "12px 0", textAlign: "right" }}>
                           <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-                            <button type="button" onClick={() => setToast({ msg: `Downloading ${r.label}.${r.format.toLowerCase()}…`, type: "success" })} style={{
+                            <button type="button" onClick={() => showToast(`Downloading ${r.name}.${(filters.format ?? "pdf").toLowerCase()}…`, "success")} style={{
                               background: "rgba(34,211,238,0.1)", border: `1px solid ${accent}33`,
                               borderRadius: 6, color: accent, fontSize: 11, fontWeight: 600,
                               padding: "5px 12px", cursor: "pointer",
@@ -561,7 +554,13 @@ export default function AnalyticsDashboardPage() {
         )}
       </div>
 
-      {showModal && <ReportModal onClose={() => setShowModal(false)} onGenerate={handleGenerate} />}
+      {showModal && (
+        <ReportModal
+          onClose={() => setShowModal(false)}
+          onGenerate={handleGenerate}
+          availableDepts={availableDepts}
+        />
+      )}
       <Toast msg={toast.msg} type={toast.type} />
     </AdminLayout>
   );
