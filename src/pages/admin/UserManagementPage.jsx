@@ -12,6 +12,17 @@ function isKfupmEmail(email) {
   return /^[^\s@]+@kfupm\.edu\.sa$/.test(email);
 }
 
+function extractStudentIdFromEmail(email) {
+  const match = String(email || "").trim().toLowerCase().match(/^s(\d+)@kfupm\.edu\.sa$/);
+  return match ? match[1] : "";
+}
+
+function withStudentIdFromEmail(data) {
+  if (data.role !== "student") return data;
+  const studentId = extractStudentIdFromEmail(data.email);
+  return studentId ? { ...data, studentId } : data;
+}
+
 function formatDate(iso) {
   if (!iso) return "Never";
   const d = new Date(iso);
@@ -36,26 +47,34 @@ function parseCSV(text, existingUsers) {
 
   lines.slice(1).forEach((line, i) => {
     const cols = line.split(",").map((c) => c.trim().replaceAll(/^"|"$/g, ""));
-    if (cols.length < 5) {
-      errors.push({ row: i + 2, reason: "Missing columns (need: fullName, email, studentId, role, department)" });
+    if (cols.length < 4) {
+      errors.push({ row: i + 2, reason: "Missing columns (need: fullName, email, role, department; studentId is optional)" });
       return;
     }
-    const [fullName, email, studentId, role, department] = cols;
+    const [fullName, email, third, fourth, fifth] = cols;
+    const hasStudentIdColumn = cols.length >= 5;
+    const studentId = hasStudentIdColumn ? third : "";
+    const role = hasStudentIdColumn ? fourth : third;
+    const department = hasStudentIdColumn ? fifth : fourth;
+    const normalizedEmail = email.toLowerCase().trim();
+    const normalizedRole = role.toLowerCase().trim();
+    const resolvedStudentId = studentId.trim() || (normalizedRole === "student" ? extractStudentIdFromEmail(normalizedEmail) : "");
+
     if (!fullName) { errors.push({ row: i + 2, reason: "Missing full name" }); return; }
-    if (!isKfupmEmail(email)) { errors.push({ row: i + 2, reason: `Invalid email: ${email}` }); return; }
-    if (existingUsers.some((u) => u.email === email.toLowerCase())) {
+    if (!isKfupmEmail(normalizedEmail)) { errors.push({ row: i + 2, reason: `Invalid email: ${email}` }); return; }
+    if (existingUsers.some((u) => u.email === normalizedEmail)) {
       errors.push({ row: i + 2, reason: `Email already exists: ${email}` }); return;
     }
-    if (!ROLES.includes(role.toLowerCase())) {
+    if (!ROLES.includes(normalizedRole)) {
       errors.push({ row: i + 2, reason: `Invalid role: ${role} (must be student, instructor, or admin)` }); return;
     }
-    if (!studentId) { errors.push({ row: i + 2, reason: "Missing ID" }); return; }
+    if (!resolvedStudentId) { errors.push({ row: i + 2, reason: "Missing ID" }); return; }
 
     valid.push({
       fullName: fullName.trim(),
-      email: email.toLowerCase().trim(),
-      studentId: studentId.trim(),
-      role: role.toLowerCase(),
+      email: normalizedEmail,
+      studentId: resolvedStudentId,
+      role: normalizedRole,
       department: department.toUpperCase().trim() || "ICS",
     });
   });
@@ -204,6 +223,14 @@ export default function UserManagementPage() {
     setTimeout(() => setToast(null), 3500);
   };
 
+  const updateForm = (updates) => {
+    setForm((current) => withStudentIdFromEmail({ ...current, ...updates }));
+  };
+
+  const updateEditUser = (updates) => {
+    setEditUser((current) => current ? withStudentIdFromEmail({ ...current, ...updates }) : current);
+  };
+
   // ── Derived state ──
   const filtered = users.filter((u) => {
     const q = search.toLowerCase();
@@ -228,6 +255,9 @@ export default function UserManagementPage() {
     active: users.filter((u) => u.status === "active").length,
   };
 
+  const formDerivedStudentId = form.role === "student" ? extractStudentIdFromEmail(form.email) : "";
+  const editDerivedStudentId = editUser?.role === "student" ? extractStudentIdFromEmail(editUser.email) : "";
+
   // ── Form validation ──
   const validateForm = (data, isEdit = false, originalEmail = "") => {
     const errs = {};
@@ -239,7 +269,8 @@ export default function UserManagementPage() {
         errs.email = "Email already exists in the system";
       }
     }
-    if (!data.studentId.trim()) {
+    const derivedStudentId = data.role === "student" ? extractStudentIdFromEmail(data.email) : "";
+    if (!data.studentId.trim() && !derivedStudentId) {
       errs.studentId = "ID is required";
     }
     if (!data.role) errs.role = "Role is required";
@@ -249,15 +280,16 @@ export default function UserManagementPage() {
 
   // ── Add user ──
   const handleAddUser = async () => {
-    const errs = validateForm(form);
-    if (Object.keys(errs).length > 0) { setFormErrors(errs); return; }
+    const nextForm = withStudentIdFromEmail(form);
+    const errs = validateForm(nextForm);
+    if (Object.keys(errs).length > 0) { setForm(nextForm); setFormErrors(errs); return; }
     try {
       const newUser = await api.post("/admin/users", {
-        fullName: form.fullName.trim(),
-        email: form.email.trim().toLowerCase(),
-        studentId: form.studentId.trim(),
-        role: form.role,
-        department: form.department,
+        fullName: nextForm.fullName.trim(),
+        email: nextForm.email.trim().toLowerCase(),
+        studentId: nextForm.studentId.trim(),
+        role: nextForm.role,
+        department: nextForm.department,
         password: INITIAL_PASSWORD,
       });
       setUsers((prev) => [...prev, newUser]);
@@ -278,18 +310,19 @@ export default function UserManagementPage() {
 
   // ── Edit user ──
   const handleEditUser = async () => {
-    const errs = validateForm(editUser, true, editUser._originalEmail);
-    if (Object.keys(errs).length > 0) { setFormErrors(errs); return; }
+    const nextEditUser = withStudentIdFromEmail(editUser);
+    const errs = validateForm(nextEditUser, true, nextEditUser._originalEmail);
+    if (Object.keys(errs).length > 0) { setEditUser(nextEditUser); setFormErrors(errs); return; }
     try {
-      const updated = await api.patch(`/admin/users/${editUser.id}`, {
-        fullName: editUser.fullName.trim(),
-        email: editUser.email.trim().toLowerCase(),
-        studentId: editUser.studentId.trim(),
-        role: editUser.role,
-        department: editUser.department,
-        status: editUser.status,
+      const updated = await api.patch(`/admin/users/${nextEditUser.id}`, {
+        fullName: nextEditUser.fullName.trim(),
+        email: nextEditUser.email.trim().toLowerCase(),
+        studentId: nextEditUser.studentId.trim(),
+        role: nextEditUser.role,
+        department: nextEditUser.department,
+        status: nextEditUser.status,
       });
-      setUsers((prev) => prev.map((u) => u.id === editUser.id ? { ...u, ...updated } : u));
+      setUsers((prev) => prev.map((u) => u.id === nextEditUser.id ? { ...u, ...updated } : u));
       setEditUser(null);
       setFormErrors({});
       showToast("User updated successfully");
@@ -333,7 +366,7 @@ export default function UserManagementPage() {
   const downloadCSVTemplate = () => {
     const content = [
       "fullName,email,studentId,role,department",
-      "John Doe,john.doe@kfupm.edu.sa,20200100,student,COE",
+      "John Doe,s20200100@kfupm.edu.sa,,student,COE",
       "Dr. Jane Smith,jane.smith@kfupm.edu.sa,I010,instructor,ICS",
     ].join("\n");
     const blob = new Blob([content], { type: "text/csv" });
@@ -716,7 +749,9 @@ export default function UserManagementPage() {
                 </Field>
                 <Field label="Employee / Student ID *" error={formErrors.studentId}>
                   <input
-                    style={inputStyle} placeholder="e.g. 20200001"
+                    style={{ ...inputStyle, opacity: formDerivedStudentId ? 0.72 : 1 }}
+                    placeholder="e.g. 20200001"
+                    readOnly={Boolean(formDerivedStudentId)}
                     value={form.studentId} onChange={(e) => setForm({ ...form, studentId: e.target.value })}
                   />
                 </Field>
@@ -724,12 +759,12 @@ export default function UserManagementPage() {
               <Field label="KFUPM Email *" error={formErrors.email}>
                 <input
                   style={inputStyle} placeholder="name@kfupm.edu.sa"
-                  value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })}
+                  value={form.email} onChange={(e) => updateForm({ email: e.target.value })}
                 />
               </Field>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 16px" }}>
                 <Field label="Role *" error={formErrors.role}>
-                  <select style={{ ...inputStyle, cursor: "pointer" }} value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
+                  <select style={{ ...inputStyle, cursor: "pointer" }} value={form.role} onChange={(e) => updateForm({ role: e.target.value })}>
                     {ROLES.map((r) => <option key={r} value={r}>{r.charAt(0).toUpperCase() + r.slice(1)}</option>)}
                   </select>
                 </Field>
@@ -783,18 +818,21 @@ export default function UserManagementPage() {
                 onChange={(e) => setEditUser({ ...editUser, fullName: e.target.value })} />
             </Field>
             <Field label="Employee / Student ID *" error={formErrors.studentId}>
-              <input style={inputStyle} value={editUser.studentId}
+              <input
+                style={{ ...inputStyle, opacity: editDerivedStudentId ? 0.72 : 1 }}
+                readOnly={Boolean(editDerivedStudentId)}
+                value={editUser.studentId}
                 onChange={(e) => setEditUser({ ...editUser, studentId: e.target.value })} />
             </Field>
           </div>
           <Field label="KFUPM Email *" error={formErrors.email}>
             <input style={inputStyle} value={editUser.email}
-              onChange={(e) => setEditUser({ ...editUser, email: e.target.value })} />
+              onChange={(e) => updateEditUser({ email: e.target.value })} />
           </Field>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "0 16px" }}>
             <Field label="Role *" error={formErrors.role}>
               <select style={{ ...inputStyle, cursor: "pointer" }} value={editUser.role}
-                onChange={(e) => setEditUser({ ...editUser, role: e.target.value })}>
+                onChange={(e) => updateEditUser({ role: e.target.value })}>
                 {ROLES.map((r) => <option key={r} value={r}>{r.charAt(0).toUpperCase() + r.slice(1)}</option>)}
               </select>
             </Field>
