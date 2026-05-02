@@ -18,7 +18,36 @@ const RUNNABLE_EXTENSIONS_BY_LANGUAGE = {
   java: ["java"],
   c: ["c"],
   "c++": ["cpp", "cc", "cxx"],
+  cpp: ["cpp", "cc", "cxx"],
+  go: ["go"],
+  rust: ["rs"],
 };
+
+function normalizeLanguage(language) {
+  const value = String(language || "python").trim().toLowerCase();
+  if (value === "c++") return "cpp";
+  return value;
+}
+
+function labLanguages(lab) {
+  if (Array.isArray(lab?.languages) && lab.languages.length > 0) return lab.languages;
+  if (lab?.language) return [lab.language];
+  return ["python"];
+}
+
+function displayLanguages(lab) {
+  return labLanguages(lab).join(", ");
+}
+
+function languageForFile(lab, fileName) {
+  const ext = fileName ? getFileExtension(fileName) : "";
+  const languages = labLanguages(lab);
+  const byExtension = languages.find((language) => {
+    const normalized = normalizeLanguage(language);
+    return RUNNABLE_EXTENSIONS_BY_LANGUAGE[normalized]?.includes(ext);
+  });
+  return normalizeLanguage(byExtension || languages[0]);
+}
 
 function getFileExtension(fileName) {
   const parts = fileName.toLowerCase().split(".");
@@ -466,7 +495,7 @@ export default function LabWorkspacePage() {
     try {
       const result = await api.post("/compile", {
         code: fileContents[activeFile] ?? "",
-        language: (lab?.language ?? "python").toLowerCase(),
+        language: languageForFile(lab, activeFile),
         input: "",
       });
 
@@ -605,7 +634,7 @@ export default function LabWorkspacePage() {
     try {
       const submission = getSubmissionPayload(await api.post(`/student/submissions/${labId}`, {
         code: fileContents[activeFile] ?? "",
-        language: (lab?.language ?? "python").toLowerCase(),
+        language: languageForFile(lab, activeFile),
       }));
       if (Array.isArray(submission?.testResults)) {
         setTestResults(submission.testResults);
@@ -620,8 +649,11 @@ export default function LabWorkspacePage() {
   const visibleTests = testResults.filter((r) => r.status !== "hidden" && r.type !== "hidden");
   const passed = visibleTests.filter((r) => r.status === "pass").length;
   const visibleTotal = visibleTests.length;
-  const supportedExtensions =
-    RUNNABLE_EXTENSIONS_BY_LANGUAGE[(lab?.language ?? "python").toLowerCase()] ?? [];
+  const supportedExtensions = Array.from(new Set(
+    labLanguages(lab).flatMap((language) =>
+      RUNNABLE_EXTENSIONS_BY_LANGUAGE[normalizeLanguage(language)] ?? [],
+    ),
+  ));
   const activeFileExtension = activeFile ? getFileExtension(activeFile) : "";
   const isActiveFileRunnable = !!activeFile && supportedExtensions.includes(activeFileExtension);
   const saveLabel = saveState === "saving"
@@ -888,7 +920,7 @@ export default function LabWorkspacePage() {
                       color: accent,
                     }}
                   >
-                    🐍 {lab?.language ?? "Python"}
+                    {displayLanguages(lab)}
                   </span>
                 </div>
                 <pre
@@ -1293,7 +1325,7 @@ export default function LabWorkspacePage() {
                       ? "Type input and press Enter"
                       : isActiveFileRunnable
                         ? "Run the lab to see output here."
-                        : `Select a ${lab?.language ?? "Python"} source file to run.`
+                        : `Select a ${displayLanguages(lab)} source file to run.`
                   }
                   spellCheck={false}
                   style={{
