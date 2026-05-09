@@ -706,8 +706,8 @@ export default function LabWorkspacePage() {
       await api.post("/peer-reviews/share", {
         labId,
         reviewerEmail: email,
-        fileContents,
-        files,
+        fileContents: JSON.stringify(fileContents),
+        files: files.map((f) => ({ filename: f })),
       });
       setShowShareModal(false);
       setShareEmail("");

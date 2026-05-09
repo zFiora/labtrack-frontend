@@ -52,8 +52,14 @@ export default function AssignedReviewPage() {
         // Normalise files to an array of name strings
         const fileList = (data.files || []).map((f) => f.filename || f).filter(Boolean);
         const firstName = fileList[0] || "submission";
-        // Backend stores fileContents as a single string; map it under the first filename
-        const contentsMap = { [firstName]: data.fileContents || "" };
+        // fileContents is stored as JSON-stringified map; fall back to plain string for old records
+        let contentsMap;
+        try {
+          const parsed = JSON.parse(data.fileContents || "{}");
+          contentsMap = typeof parsed === "object" && parsed !== null ? parsed : { [firstName]: data.fileContents || "" };
+        } catch {
+          contentsMap = { [firstName]: data.fileContents || "" };
+        }
 
         const normalised = {
           ...data,
